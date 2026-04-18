@@ -1,0 +1,11 @@
+node_modules/
+*.tgz
+.npm-cache/
+packages/*/.npm-cache/
+packages/*/dist/
+.claude-code-to-llm/
+.codex-minimal/
+tmp-auth/
+.idea/
+*.tsbuildinfo*
+review.md

@@ -1,0 +1,8 @@
+.git
+node_modules
+packages/*/node_modules
+.npm-cache
+*.tgz
+.codex-minimal
+.claude-code-to-llm
+tmp-auth

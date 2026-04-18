@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": false,
+    "skipLibCheck": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "paths": {
+      "@yadimon/claude-code-to-llm": ["./packages/claude-code-to-llm/src/index.ts"],
+      "@yadimon/claude-code-to-llm-server": ["./packages/claude-code-to-llm-server/src/index.ts"]
+    }
+  }
+}

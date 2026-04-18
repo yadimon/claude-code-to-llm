@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version:
+          - 20
+          - 22
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test core package
+        run: npm run test --workspace @yadimon/claude-code-to-llm
+
+      - name: Test server package
+        run: npm run test --workspace @yadimon/claude-code-to-llm-server
+
+      - name: Core e2e
+        run: npm run e2e --workspace @yadimon/claude-code-to-llm
+
+      - name: Server e2e
+        run: npm run e2e --workspace @yadimon/claude-code-to-llm-server
+
+      - name: Build
+        run: npm run build
+
+      - name: Pack core package
+        run: npm run pack --workspace @yadimon/claude-code-to-llm
+
+      - name: Pack server package
+        run: npm run pack --workspace @yadimon/claude-code-to-llm-server
+
+      - name: Publish core package dry run
+        run: npm run publish:dry-run --workspace @yadimon/claude-code-to-llm
+
+      - name: Publish server package dry run
+        run: npm run publish:dry-run --workspace @yadimon/claude-code-to-llm-server
+
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Verify Docker flow
+        run: npm run test:docker

@@ -1,0 +1,66 @@
+{
+  "name": "@yadimon/claude-code-to-llm-server",
+  "version": "0.3.0",
+  "description": "Use Claude Code as a simple OpenAI-compatible Responses server",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yadimon/claudecode-to-llm.git"
+  },
+  "homepage": "https://github.com/yadimon/claudecode-to-llm#readme",
+  "bugs": {
+    "url": "https://github.com/yadimon/claudecode-to-llm/issues"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "claude-code-to-llm-server": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "scripts",
+    "README.md",
+    "LICENSE",
+    "Dockerfile"
+  ],
+  "scripts": {
+    "build": "node --input-type=module --eval \"import fs from 'node:fs'; fs.rmSync('dist', { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });\" && tsc -b ../claude-code-to-llm tsconfig.json",
+    "e2e": "tsx ./scripts/e2e-server.ts",
+    "lint": "eslint src test scripts",
+    "pack": "npm pack --dry-run",
+    "pack:check": "npm run pack && publint",
+    "publish:dry-run": "npm publish --dry-run",
+    "release:check": "tsx ./scripts/release-check.ts",
+    "smoke": "tsx ./scripts/smoke-server.ts",
+    "start": "tsx ./src/cli.ts",
+    "start:mock": "tsx ./scripts/start-mock-server.ts",
+    "test:docker": "tsx ./scripts/docker-e2e.ts",
+    "prepack": "npm run test && npm run build",
+    "test": "tsx ./scripts/run-node-tests.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@yadimon/claude-code-to-llm": "^0.3.0"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "openai",
+    "responses",
+    "server",
+    "compatibility"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  }
+}
