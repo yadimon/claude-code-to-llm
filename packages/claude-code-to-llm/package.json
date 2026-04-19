@@ -1,6 +1,6 @@
 {
   "name": "@yadimon/claude-code-to-llm",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Use Claude Code as a simple LLM provider through an SDK and CLI",
   "type": "module",
   "main": "./dist/index.js",
