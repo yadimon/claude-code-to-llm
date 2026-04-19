@@ -15,6 +15,7 @@ type AssistantMessageEvent = {
 type ResultEvent = {
   type: "result";
   subtype?: string;
+  is_error?: boolean;
   result?: string;
   usage?: {
     input_tokens?: number;

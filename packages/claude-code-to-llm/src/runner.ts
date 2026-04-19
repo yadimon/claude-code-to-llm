@@ -91,6 +91,7 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
   let content = "";
   let stderr = "";
   let stdoutBuffer = "";
+  let lastResultMessage = "";
   let usage: UsageSummary = createEmptyUsage();
 
   const cliArgs = [
@@ -220,16 +221,22 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
     }
 
     if (isResultEvent(event)) {
+      const resultMessage =
+        typeof event.result === "string" && event.result.trim() ? event.result.trim() : "";
+      if (resultMessage) {
+        lastResultMessage = resultMessage;
+      }
+
       if (event.usage) {
         usage = normalizeUsage(event.usage);
       }
 
-      if (!content && typeof event.result === "string" && event.result.trim()) {
-        content = event.result.trim();
+      if (!content && resultMessage) {
+        content = resultMessage;
       }
 
-      if (event.subtype && event.subtype !== "success") {
-        finalizeFailure(new Error(typeof event.result === "string" ? event.result : "Claude Code request failed"));
+      if (event.is_error || (event.subtype && event.subtype !== "success")) {
+        finalizeFailure(new Error(resultMessage || "Claude Code request failed"));
       }
     }
   }
@@ -253,7 +260,7 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
 
   child.on("close", (code, signal) => {
     setImmediate(() => {
-      const exitError = createClaudeCodeExitError(code, signal, stderr);
+      const exitError = createClaudeCodeExitError(code, signal, stderr, lastResultMessage);
       if (exitError) {
         finalizeFailure(exitError);
         return;
@@ -358,15 +365,16 @@ function appendBounded(current: string, nextChunk: string): string {
 export function createClaudeCodeExitError(
   code: number | null,
   signal: NodeJS.Signals | null,
-  stderr: string
+  stderr: string,
+  resultMessage = ""
 ): Error | undefined {
   const normalizedStderr = stderr.trim();
   if (signal) {
-    return new Error(normalizedStderr || `Claude Code exited due to signal ${signal}`);
+    return new Error(normalizedStderr || resultMessage || `Claude Code exited due to signal ${signal}`);
   }
 
   if (code !== 0) {
-    return new Error(normalizedStderr || `Claude Code exited with code ${code}`);
+    return new Error(normalizedStderr || resultMessage || `Claude Code exited with code ${code}`);
   }
 
   return undefined;

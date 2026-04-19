@@ -69,13 +69,17 @@ test("normalizeSpawnError provides targeted permission errors", () => {
   assert.match(error.message, /not executable/);
 });
 
-test("createClaudeCodeExitError prefers signal information over a generic success path", () => {
+test("createClaudeCodeExitError prefers stderr or parsed result messages over generic exit codes", () => {
   assert.equal(createClaudeCodeExitError(0, null, ""), undefined);
   assert.match(
     createClaudeCodeExitError(null, "SIGTERM", "")?.message || "",
     /signal SIGTERM/
   );
   assert.match(createClaudeCodeExitError(1, null, "")?.message || "", /code 1/);
+  assert.match(
+    createClaudeCodeExitError(1, null, "", "Invalid authentication credentials")?.message || "",
+    /Invalid authentication credentials/
+  );
 });
 
 test("runPrompt fails when the Claude Code process exits due to a signal", async () => {

@@ -20,6 +20,7 @@ Options:
   --input-file <path>
   --stream
   --json
+  --verbose
   --model <name>
   --reasoning-effort <level>
   --max-tokens <n>
@@ -114,7 +115,11 @@ const isDirectExecution = Boolean(invokedPath) && invokedPath === modulePath;
 
 if (isDirectExecution) {
   main().catch(error => {
-    console.error(error instanceof Error ? error.message : String(error));
+    if (hasFlag("--verbose") && error instanceof Error && error.stack) {
+      console.error(error.stack);
+    } else {
+      console.error(error instanceof Error ? error.message : String(error));
+    }
     process.exit(1);
   });
 }
