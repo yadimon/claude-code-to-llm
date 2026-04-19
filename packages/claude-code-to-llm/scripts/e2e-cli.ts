@@ -49,12 +49,17 @@ function runCli(args: string[], options: { env?: NodeJS.ProcessEnv; input?: stri
   const { dir, file } = makeTempFile("prompt.txt", "Hello-from-file");
 
   try {
-    const result = runCli(["--input-file", file, "--json", "--cli", fakeClaudePath], {
-      env: {
-        CLAUDE_CODE_TO_LLM_AUTH_PATH: auth.sessionPath,
-        CLAUDE_CODE_TO_LLM_CREDENTIALS_PATH: auth.credentialsPath
-      }
-    });
+    const result = runCli([
+      "--input-file",
+      file,
+      "--json",
+      "--cli",
+      fakeClaudePath,
+      "--auth-path",
+      auth.sessionPath,
+      "--credentials-path",
+      auth.credentialsPath
+    ]);
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const parsed = JSON.parse(result.stdout);
     assert.equal(parsed.prompt, "Hello-from-file");
@@ -67,13 +72,21 @@ function runCli(args: string[], options: { env?: NodeJS.ProcessEnv; input?: stri
 
 {
   const auth = makeTempAuthBundle();
-  const result = runCli(["--stream", "--json", "--cli", fakeClaudePath], {
-    env: {
-      CLAUDE_CODE_TO_LLM_AUTH_PATH: auth.sessionPath,
-      CLAUDE_CODE_TO_LLM_CREDENTIALS_PATH: auth.credentialsPath
-    },
-    input: "Hello-from-stdin"
-  });
+  const result = runCli(
+    [
+      "--stream",
+      "--json",
+      "--cli",
+      fakeClaudePath,
+      "--auth-path",
+      auth.sessionPath,
+      "--credentials-path",
+      auth.credentialsPath
+    ],
+    {
+      input: "Hello-from-stdin"
+    }
+  );
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const events = result.stdout
