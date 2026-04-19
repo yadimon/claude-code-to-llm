@@ -1,4 +1,4 @@
-# claudecode-to-llm
+# claude-code-to-llm
 
 Monorepo for two npm packages built around the Claude Code CLI:
 

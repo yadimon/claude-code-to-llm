@@ -7,11 +7,11 @@
   "types": "./dist/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yadimon/claudecode-to-llm.git"
+    "url": "git+https://github.com/yadimon/claude-code-to-llm.git"
   },
-  "homepage": "https://github.com/yadimon/claudecode-to-llm#readme",
+  "homepage": "https://github.com/yadimon/claude-code-to-llm#readme",
   "bugs": {
-    "url": "https://github.com/yadimon/claudecode-to-llm/issues"
+    "url": "https://github.com/yadimon/claude-code-to-llm/issues"
   },
   "exports": {
     ".": {
