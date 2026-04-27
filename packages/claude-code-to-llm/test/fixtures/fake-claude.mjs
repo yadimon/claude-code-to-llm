@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import fs from "node:fs";
+
 const args = process.argv.slice(2);
 
 if (args[0] === "--version") {
@@ -10,6 +12,14 @@ if (args[0] === "--version") {
 if (!args.includes("-p") && !args.includes("--print")) {
   console.error(`Unsupported fake Claude command: ${args.join(" ")}`);
   process.exit(1);
+}
+
+if (process.env.FAKE_CLAUDE_CAPTURE_FILE) {
+  fs.writeFileSync(
+    process.env.FAKE_CLAUDE_CAPTURE_FILE,
+    JSON.stringify({ args }, null, 2),
+    "utf8"
+  );
 }
 
 if (process.env.FAKE_CLAUDE_TERMINATE_SIGNAL) {

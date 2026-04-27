@@ -61,7 +61,7 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
   }
 
   const normalizedOptions = normalizeRunOptions(options);
-  const { model, reasoningEffort, maxTokens, timeoutMs, cliPath } = normalizedOptions;
+  const { model, reasoningEffort, maxTokens, timeoutMs, cliPath, webSearch } = normalizedOptions;
   assertCliPathExists(cliPath);
   const ownsWorkspace = !options.cwd;
   const ownsClaudeHome = !options.configHome;
@@ -103,6 +103,8 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
     "--effort",
     reasoningEffort,
     "--no-session-persistence",
+    webSearch ? "--allowed-tools" : "--disallowed-tools",
+    "WebSearch",
     prompt
   ];
 
@@ -292,7 +294,8 @@ export function normalizeRunOptions(options: RunOptions = {}): NormalizedRunOpti
     reasoningEffort: normalizeReasoningEffort(options.reasoningEffort),
     maxTokens: normalizeMaxTokens(options.maxTokens),
     timeoutMs: normalizeTimeout(options.timeout),
-    cliPath: normalizeCliPath(options.cliPath)
+    cliPath: normalizeCliPath(options.cliPath),
+    webSearch: options.webSearch === true
   };
 }
 

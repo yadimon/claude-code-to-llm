@@ -78,6 +78,7 @@ Supported CLI options:
 --model <name>
 --reasoning-effort <level>
 --max-tokens <n>
+--search
 --auth-path <path>
 --credentials-path <path>
 --settings-path <path>
@@ -104,6 +105,7 @@ Supported CLI options:
 - The wrapper calls `claude --print --output-format stream-json`.
 - `maxTokens` maps to `CLAUDE_CODE_MAX_OUTPUT_TOKENS` for the spawned Claude Code process.
 - The package is intentionally focused on raw prompt execution. It does not expose Claude Code tools through its public API.
+- Web search is off by default. The wrapper always forces the `WebSearch` permission via `--allowed-tools WebSearch` (when `webSearch: true` / `--search`) or `--disallowed-tools WebSearch`, overriding any `WebSearch` entry in `settings.json`.
 
 ## Development
 

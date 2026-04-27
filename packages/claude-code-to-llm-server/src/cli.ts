@@ -18,6 +18,7 @@ Options:
   --port <port>
   --model <name>
   --api-key <value>
+  --search
   --auth-path <path>
   --credentials-path <path>
   --settings-path <path>
@@ -38,6 +39,7 @@ export async function main(): Promise<void> {
     port,
     defaultModel: getArg("--model"),
     apiKey: getArg("--api-key"),
+    webSearch: hasFlag("--search") || undefined,
     authPath: getArg("--auth-path"),
     credentialsPath: getArg("--credentials-path"),
     settingsPath: getArg("--settings-path"),

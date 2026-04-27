@@ -36,6 +36,12 @@ test("normalizeRunOptions rejects invalid CLI-facing values", () => {
   );
 });
 
+test("normalizeRunOptions defaults webSearch to false and accepts true", () => {
+  assert.equal(normalizeRunOptions({}).webSearch, false);
+  assert.equal(normalizeRunOptions({ webSearch: true }).webSearch, true);
+  assert.equal(normalizeRunOptions({ webSearch: false }).webSearch, false);
+});
+
 test("normalizeRunOptions rejects invalid timeout values", () => {
   assert.throws(() => normalizeRunOptions({ timeout: -1 }), /Invalid timeout/);
   assert.throws(() => normalizeRunOptions({ timeout: Number.NaN }), /Invalid timeout/);
@@ -80,6 +86,58 @@ test("createClaudeCodeExitError prefers stderr or parsed result messages over ge
     createClaudeCodeExitError(1, null, "", "Invalid authentication credentials")?.message || "",
     /Invalid authentication credentials/
   );
+});
+
+test("runPrompt forwards web search choice to the claude CLI", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "claude-code-to-llm-websearch-"));
+  const { sessionPath, credentialsPath } = writeAuthBundle(tempDir);
+  const capturePath = path.join(tempDir, "capture.json");
+  const fixturePath = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "./fixtures/fake-claude.mjs"
+  );
+  const cliPath =
+    process.platform === "win32" ? path.join(tempDir, "fake-claude.cmd") : fixturePath;
+  if (process.platform === "win32") {
+    fs.writeFileSync(cliPath, `@echo off\r\n"${process.execPath}" "${fixturePath}" %*\r\n`, "utf8");
+  }
+
+  const previousCapture = process.env.FAKE_CLAUDE_CAPTURE_FILE;
+  process.env.FAKE_CLAUDE_CAPTURE_FILE = capturePath;
+
+  try {
+    await runPrompt("Hello", {
+      authPath: sessionPath,
+      credentialsPath,
+      cliPath,
+      timeout: 5000,
+      webSearch: true
+    });
+    const enabledCapture = JSON.parse(fs.readFileSync(capturePath, "utf8")) as { args: string[] };
+    const enabledIdx = enabledCapture.args.indexOf("--allowed-tools");
+    assert.notEqual(enabledIdx, -1);
+    assert.equal(enabledCapture.args[enabledIdx + 1], "WebSearch");
+    assert.ok(!enabledCapture.args.includes("--disallowed-tools"));
+
+    await runPrompt("Hello", {
+      authPath: sessionPath,
+      credentialsPath,
+      cliPath,
+      timeout: 5000
+    });
+    const disabledCapture = JSON.parse(fs.readFileSync(capturePath, "utf8")) as { args: string[] };
+    const disabledIdx = disabledCapture.args.indexOf("--disallowed-tools");
+    assert.notEqual(disabledIdx, -1);
+    assert.equal(disabledCapture.args[disabledIdx + 1], "WebSearch");
+    assert.ok(!disabledCapture.args.includes("--allowed-tools"));
+  } finally {
+    if (previousCapture == null) {
+      delete process.env.FAKE_CLAUDE_CAPTURE_FILE;
+    } else {
+      process.env.FAKE_CLAUDE_CAPTURE_FILE = previousCapture;
+    }
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test("runPrompt fails when the Claude Code process exits due to a signal", async () => {

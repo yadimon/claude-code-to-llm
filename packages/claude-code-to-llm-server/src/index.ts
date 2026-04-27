@@ -330,7 +330,8 @@ function defaultRunnerOptions(options: ServerOptions): RunOptions {
     configHome: options.configHome || process.env.CLAUDE_CODE_TO_LLM_CONFIG_HOME,
     cwd: options.cwd || process.env.CLAUDE_CODE_TO_LLM_WORKSPACE,
     reasoningEffort:
-      options.reasoningEffort || process.env.CLAUDE_CODE_TO_LLM_REASONING_EFFORT
+      options.reasoningEffort || process.env.CLAUDE_CODE_TO_LLM_REASONING_EFFORT,
+    webSearch: options.webSearch
   };
 }
 

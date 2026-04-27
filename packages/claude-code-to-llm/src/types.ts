@@ -13,6 +13,7 @@ export interface RunOptions {
   configHome?: string;
   cwd?: string;
   responseId?: string;
+  webSearch?: boolean;
 }
 
 export interface NormalizedRunOptions {
@@ -21,6 +22,7 @@ export interface NormalizedRunOptions {
   maxTokens?: number;
   timeoutMs: number;
   cliPath: string;
+  webSearch: boolean;
 }
 
 export interface UsageSummary {

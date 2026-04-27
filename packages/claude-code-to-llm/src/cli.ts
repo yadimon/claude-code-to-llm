@@ -24,6 +24,7 @@ Options:
   --model <name>
   --reasoning-effort <level>
   --max-tokens <n>
+  --search
   --auth-path <path>
   --credentials-path <path>
   --settings-path <path>
@@ -68,6 +69,7 @@ function buildRunOptions(): RunOptions {
     model: getArg("--model"),
     reasoningEffort: getArg("--reasoning-effort"),
     maxTokens: maxTokensArg ? Number.parseInt(maxTokensArg, 10) : undefined,
+    webSearch: hasFlag("--search") || undefined,
     authPath: getArg("--auth-path"),
     credentialsPath: getArg("--credentials-path"),
     settingsPath: getArg("--settings-path"),

@@ -8,6 +8,7 @@ test("CLI help text documents JSON and streaming options", () => {
   assert.match(HELP_TEXT, /--input-file <path>/);
   assert.match(HELP_TEXT, /--stream/);
   assert.match(HELP_TEXT, /--verbose/);
+  assert.match(HELP_TEXT, /--search/);
 });
 
 test("CLI exits with code 1 and prints an error when input is missing", () => {
