@@ -96,6 +96,7 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
 
   const cliArgs = [
     "--print",
+    "--verbose",
     "--output-format",
     "stream-json",
     "--model",
