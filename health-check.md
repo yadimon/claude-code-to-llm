@@ -3,9 +3,9 @@
 ## Scope
 
 - Repository: `yadimon/claude-code-to-llm`
-- Objective: verify that the workspace is locally healthy, releasable, and aligned with the currently published `0.1.1` packages.
+- Objective: verify that the workspace is locally healthy, releasable, and aligned with the currently published `claude-code-to-llm@0.3.5` and `claude-code-to-llm-server@0.3.3` packages.
 - Baseline reference: current local `HEAD` at execution time
-- Last reviewed: `2026-04-15`
+- Last reviewed: `2026-04-28`
 
 ## Preconditions
 
@@ -41,7 +41,7 @@
 | ID | Method | Expected result | Severity |
 | --- | --- | --- | --- |
 | HC-EXT-001 | GitHub Actions API for recent runs | latest `CI` and release `Publish` runs are `success` | critical |
-| HC-EXT-002 | npm registry dist-tags | both public packages report `latest: 0.1.1` | critical |
+| HC-EXT-002 | npm registry dist-tags | `@yadimon/claude-code-to-llm` reports `latest: 0.3.5` and `@yadimon/claude-code-to-llm-server` reports `latest: 0.3.3` | critical |
 
 ## Known Weak Points
 
@@ -65,14 +65,15 @@
 
 ## Latest Execution Evidence
 
-- Overall classification: `HEALTHY`
-- Execution date: `2026-04-15`
+- Overall classification: `AT_RISK`
+- Execution date: `2026-04-28`
+- Reason: HC-EXT-001 (GitHub Actions verification) is `manual-required` because `gh` is not on PATH in the local shell. All critical automated checks pass.
 
 | ID | Status | Evidence |
 | --- | --- | --- |
-| HC-AUTO-001 | pass | `git status --short` returned no output on the local `HEAD` reviewed on `2026-04-15` |
-| HC-AUTO-002 | pass | `npm run verify` exited `0` after lint, typecheck, tests, e2e, and both workspace builds |
+| HC-AUTO-001 | pass | `git status --short` returned no output on the local `HEAD` (`bf0501f`) reviewed on `2026-04-28` |
+| HC-AUTO-002 | pass | `npm run verify` exited `0` after lint, typecheck, 7+25+17 tests, both e2e suites, and both workspace builds |
 | HC-AUTO-003 | pass | `npm run check` exited `0` after `verify`, `pack`, and `publish:dry-run` for both packages |
-| HC-AUTO-004 | pass | `npm run test:docker` exited `0` and rebuilt the server image successfully |
-| HC-EXT-001 | pass | GitHub API reports latest `CI` on `main` and both `Publish` runs for `claude-code-to-llm-v0.1.1` and `claude-code-to-llm-server-v0.1.1` as `success` |
-| HC-EXT-002 | pass | npm registry `dist-tags.latest` equals `0.1.1` for both `@yadimon/claude-code-to-llm` and `@yadimon/claude-code-to-llm-server` |
+| HC-AUTO-004 | pass | `npm run test:docker` exited `0` after Docker Desktop was restarted and the server image rebuilt |
+| HC-EXT-001 | manual-required | `gh` not on PATH in the local shell; rerun `gh run list --branch main --limit 5` and `gh run list --workflow publish.yml --limit 3` from a shell where it resolves |
+| HC-EXT-002 | pass | `npm view` reports `dist-tags.latest = 0.3.5` for `@yadimon/claude-code-to-llm` and `0.3.3` for `@yadimon/claude-code-to-llm-server` |

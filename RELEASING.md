@@ -16,8 +16,8 @@ Do not set `"private": true` in either publishable package. The root workspace s
 
 Examples:
 
-- `claude-code-to-llm-v0.1.1`
-- `claude-code-to-llm-server-v0.1.1`
+- `claude-code-to-llm-v0.3.5`
+- `claude-code-to-llm-server-v0.3.3`
 
 ## First Publish
 
