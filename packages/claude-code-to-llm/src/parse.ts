@@ -22,7 +22,18 @@ type ResultEvent = {
     cache_creation_input_tokens?: number;
     cache_read_input_tokens?: number;
     output_tokens?: number;
+    server_tool_use?: {
+      web_search_requests?: number;
+      web_fetch_requests?: number;
+    };
   };
+  modelUsage?: Record<
+    string,
+    {
+      webSearchRequests?: number;
+      webFetchRequests?: number;
+    }
+  >;
 };
 
 export function parseClaudeEvents(stdout: string): ParsedClaudeEvents {
@@ -46,7 +57,7 @@ export function parseClaudeEvents(stdout: string): ParsedClaudeEvents {
     }
 
     if (isResultEvent(event) && event.usage) {
-      usage = normalizeUsage(event.usage);
+      usage = normalizeUsage(event.usage, event.modelUsage);
       if (!content && typeof event.result === "string" && event.result.trim()) {
         content = event.result.trim();
       }
@@ -100,21 +111,45 @@ export function createEmptyUsage(): UsageSummary {
     cacheCreationInputTokens: 0,
     cacheReadInputTokens: 0,
     outputTokens: 0,
-    totalTokens: 0
+    totalTokens: 0,
+    webSearchRequests: 0,
+    webFetchRequests: 0
   };
 }
 
-export function normalizeUsage(usage: ResultEvent["usage"]): UsageSummary {
+export function normalizeUsage(
+  usage: ResultEvent["usage"],
+  modelUsage?: ResultEvent["modelUsage"]
+): UsageSummary {
   const inputTokens = usage?.input_tokens ?? 0;
   const cacheCreationInputTokens = usage?.cache_creation_input_tokens ?? 0;
   const cacheReadInputTokens = usage?.cache_read_input_tokens ?? 0;
   const outputTokens = usage?.output_tokens ?? 0;
+  const modelUsageValues = Object.values(modelUsage ?? {});
+  const modelUsageWebSearchRequests = modelUsageValues.reduce(
+    (total, current) => total + (current.webSearchRequests ?? 0),
+    0
+  );
+  const modelUsageWebFetchRequests = modelUsageValues.reduce(
+    (total, current) => total + (current.webFetchRequests ?? 0),
+    0
+  );
+  const webSearchRequests = Math.max(
+    usage?.server_tool_use?.web_search_requests ?? 0,
+    modelUsageWebSearchRequests
+  );
+  const webFetchRequests = Math.max(
+    usage?.server_tool_use?.web_fetch_requests ?? 0,
+    modelUsageWebFetchRequests
+  );
 
   return {
     inputTokens,
     cacheCreationInputTokens,
     cacheReadInputTokens,
     outputTokens,
-    totalTokens: inputTokens + cacheCreationInputTokens + cacheReadInputTokens + outputTokens
+    totalTokens: inputTokens + cacheCreationInputTokens + cacheReadInputTokens + outputTokens,
+    webSearchRequests,
+    webFetchRequests
   };
 }

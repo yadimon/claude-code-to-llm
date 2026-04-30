@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { runPrompt } from "../src/index.js";
 
 const result = await runPrompt(
@@ -11,11 +12,25 @@ const result = await runPrompt(
 );
 
 const events = (result.raw?.events ?? []) as Array<Record<string, unknown>>;
+const webSearchRequests = result.usage.webSearchRequests;
 
-const resultEvent = events.find(event => event.type === "result") as
-  | { usage?: { server_tool_use?: { web_search_requests?: number } } }
-  | undefined;
-const webSearchRequests = resultEvent?.usage?.server_tool_use?.web_search_requests ?? 0;
+function containsWebSearchMarker(value: unknown): boolean {
+  if (typeof value === "string") {
+    return /web[_-]?search|WebSearch/.test(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.some(containsWebSearchMarker);
+  }
+
+  if (value && typeof value === "object") {
+    return Object.entries(value).some(
+      ([key, nestedValue]) => containsWebSearchMarker(key) || containsWebSearchMarker(nestedValue)
+    );
+  }
+
+  return false;
+}
 
 const sawWebSearchToolUse = events.some(event => {
   const message = (event as { message?: { content?: Array<{ type?: string; name?: string }> } })
@@ -25,18 +40,25 @@ const sawWebSearchToolUse = events.some(event => {
   }
   return message.content.some(
     block =>
-      block?.type === "server_tool_use" ||
-      block?.type === "web_search_tool_result" ||
-      block?.type === "tool_use"
+      (block?.type === "server_tool_use" ||
+        block?.type === "web_search_tool_result" ||
+        block?.type === "tool_use") &&
+      containsWebSearchMarker(block)
   );
 });
+
+assert.ok(result.content.trim(), "Claude returned an empty response");
+assert.ok(
+  sawWebSearchToolUse || webSearchRequests > 0,
+  "Expected Claude raw events to include WebSearch tool evidence"
+);
+assert.match(result.content, /https?:\/\//, "Expected the web-search smoke response to cite a URL");
 
 console.log(
   JSON.stringify(
     {
       content: result.content,
       usage: result.usage,
-      webSearchRequests,
       sawWebSearchToolUse
     },
     null,

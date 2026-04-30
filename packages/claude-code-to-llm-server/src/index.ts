@@ -311,7 +311,9 @@ function buildMockCoreResponse(
       cacheCreationInputTokens: 0,
       cacheReadInputTokens: 0,
       outputTokens,
-      totalTokens: inputTokens + outputTokens
+      totalTokens: inputTokens + outputTokens,
+      webSearchRequests: 0,
+      webFetchRequests: 0
     },
     raw: {
       stderr: "",

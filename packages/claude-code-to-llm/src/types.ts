@@ -31,6 +31,8 @@ export interface UsageSummary {
   cacheReadInputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  webSearchRequests: number;
+  webFetchRequests: number;
 }
 
 export interface CoreResponse {

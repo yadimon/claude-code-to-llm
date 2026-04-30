@@ -230,7 +230,7 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
       }
 
       if (event.usage) {
-        usage = normalizeUsage(event.usage);
+        usage = normalizeUsage(event.usage, event.modelUsage);
       }
 
       if (!content && resultMessage) {
