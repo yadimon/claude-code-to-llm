@@ -2,6 +2,7 @@ import { createServer as createHttpServer, type IncomingMessage, type ServerResp
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import {
   DEFAULT_MODEL,
+  createEmptyUsage,
   runPrompt as defaultRunPrompt,
   streamPrompt as defaultStreamPrompt
 } from "@yadimon/claude-code-to-llm";
@@ -307,13 +308,10 @@ function buildMockCoreResponse(
     createdAt: Math.floor(Date.now() / 1000),
     content,
     usage: {
+      ...createEmptyUsage(),
       inputTokens,
-      cacheCreationInputTokens: 0,
-      cacheReadInputTokens: 0,
       outputTokens,
-      totalTokens: inputTokens + outputTokens,
-      webSearchRequests: 0,
-      webFetchRequests: 0
+      totalTokens: inputTokens + outputTokens
     },
     raw: {
       stderr: "",

@@ -116,6 +116,7 @@ curl http://127.0.0.1:3000/v1/responses \
 - `max_output_tokens` and `reasoning.effort` are forwarded to the core runner.
 - Unsupported request fields such as `tools`, `tool_choice`, or `input_image` return `400`.
 - The server owns prompt adaptation for `instructions` and multi-message dialog input before calling the raw core runner.
+- `--search` / `webSearch: true` is a server-wide policy: when enabled it allows the underlying `claude` CLI to use `WebSearch` for every request. There is no per-request opt-in (`tools` is rejected). Web-search usage is captured by the core runner but not surfaced in the OpenAI `usage` block.
 
 ## Docker
 
