@@ -105,8 +105,7 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
     reasoningEffort,
     "--no-session-persistence",
     webSearch ? "--allowed-tools" : "--disallowed-tools",
-    "WebSearch",
-    prompt
+    "WebSearch"
   ];
 
   queue.push({
@@ -274,7 +273,7 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
   });
 
   try {
-    child.stdin.end();
+    child.stdin.end(prompt);
   } catch (error) {
     finalizeFailure(error instanceof Error ? error : new Error(String(error)));
   }

@@ -14,10 +14,20 @@ if (!args.includes("-p") && !args.includes("--print")) {
   process.exit(1);
 }
 
+const stdin = await new Promise((resolve, reject) => {
+  let input = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", chunk => {
+    input += chunk;
+  });
+  process.stdin.on("end", () => resolve(input));
+  process.stdin.on("error", reject);
+});
+
 if (process.env.FAKE_CLAUDE_CAPTURE_FILE) {
   fs.writeFileSync(
     process.env.FAKE_CLAUDE_CAPTURE_FILE,
-    JSON.stringify({ args }, null, 2),
+    JSON.stringify({ args, stdin }, null, 2),
     "utf8"
   );
 }
@@ -26,7 +36,7 @@ if (process.env.FAKE_CLAUDE_TERMINATE_SIGNAL) {
   process.kill(process.pid, process.env.FAKE_CLAUDE_TERMINATE_SIGNAL);
 }
 
-const prompt = args.at(-1)?.trim() || "";
+const prompt = stdin.trim();
 const modelIndex = args.findIndex(arg => arg === "--model");
 const model = modelIndex === -1 ? "claude-sonnet-4-6" : args[modelIndex + 1];
 const message = `FAKE:${prompt}`;

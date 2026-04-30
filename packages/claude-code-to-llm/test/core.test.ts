@@ -113,11 +113,16 @@ test("runPrompt forwards web search choice to the claude CLI", async () => {
       timeout: 5000,
       webSearch: true
     });
-    const enabledCapture = JSON.parse(fs.readFileSync(capturePath, "utf8")) as { args: string[] };
+    const enabledCapture = JSON.parse(fs.readFileSync(capturePath, "utf8")) as {
+      args: string[];
+      stdin: string;
+    };
     const enabledIdx = enabledCapture.args.indexOf("--allowed-tools");
     assert.notEqual(enabledIdx, -1);
     assert.equal(enabledCapture.args[enabledIdx + 1], "WebSearch");
     assert.ok(!enabledCapture.args.includes("--disallowed-tools"));
+    assert.ok(!enabledCapture.args.includes("Hello"));
+    assert.equal(enabledCapture.stdin, "Hello");
 
     await runPrompt("Hello", {
       authPath: sessionPath,
@@ -125,11 +130,16 @@ test("runPrompt forwards web search choice to the claude CLI", async () => {
       cliPath,
       timeout: 5000
     });
-    const disabledCapture = JSON.parse(fs.readFileSync(capturePath, "utf8")) as { args: string[] };
+    const disabledCapture = JSON.parse(fs.readFileSync(capturePath, "utf8")) as {
+      args: string[];
+      stdin: string;
+    };
     const disabledIdx = disabledCapture.args.indexOf("--disallowed-tools");
     assert.notEqual(disabledIdx, -1);
     assert.equal(disabledCapture.args[disabledIdx + 1], "WebSearch");
     assert.ok(!disabledCapture.args.includes("--allowed-tools"));
+    assert.ok(!disabledCapture.args.includes("Hello"));
+    assert.equal(disabledCapture.stdin, "Hello");
   } finally {
     if (previousCapture == null) {
       delete process.env.FAKE_CLAUDE_CAPTURE_FILE;
