@@ -7,6 +7,7 @@ packages/*/dist/
 .codex-minimal/
 tmp-auth/
 .idea/
+.mcp.json
 *.tsbuildinfo*
 review.md
 skills-data/
