@@ -28,7 +28,10 @@
     "test:docker": "tsx ./scripts/run-npm-workspace.ts @yadimon/claude-code-to-llm-server test:docker",
     "test:all": "tsx ./scripts/run-workspace-tests.ts && tsx ./scripts/run-npm-workspace.ts @yadimon/claude-code-to-llm-server test:docker",
     "smoke:core": "tsx ./scripts/run-npm-workspace.ts @yadimon/claude-code-to-llm smoke:sdk",
-    "smoke:server": "tsx ./scripts/run-npm-workspace.ts @yadimon/claude-code-to-llm-server smoke"
+    "smoke:server": "tsx ./scripts/run-npm-workspace.ts @yadimon/claude-code-to-llm-server smoke",
+    "smoke:published-core": "node ./scripts/smoke-published.mjs core",
+    "smoke:published-server": "node ./scripts/smoke-published.mjs server",
+    "smoke:published": "node ./scripts/smoke-published.mjs all"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
