@@ -32,7 +32,7 @@
   ],
   "scripts": {
     "auth:copy": "tsx ./scripts/copy-auth.ts",
-    "build": "node --input-type=module --eval \"import fs from 'node:fs'; for (const target of ['dist', '.tsbuildinfo']) { fs.rmSync(target, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }); }\" && tsc -b tsconfig.json",
+    "build": "node --input-type=module --eval \"import fs from 'node:fs'; for (const target of ['dist', '.tsbuildinfo']) { fs.rmSync(target, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }); }\" && tsc -b tsconfig.build.json",
     "e2e": "tsx ./scripts/e2e-cli.ts",
     "lint": "eslint src test scripts",
     "pack": "npm pack --dry-run",
@@ -45,7 +45,7 @@
     "smoke:tokens": "tsx ./scripts/smoke-tokens.ts",
     "prepack": "npm run test && npm run build",
     "test": "tsx ./scripts/run-node-tests.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc -b tsconfig.build.json && tsc --noEmit -p tsconfig.json"
   },
   "keywords": [
     "claude",

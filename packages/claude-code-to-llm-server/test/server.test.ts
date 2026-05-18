@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createEmptyUsage } from "@yadimon/claude-code-to-llm";
 import type { RunOptions, StreamEvent } from "@yadimon/claude-code-to-llm";
 import {
   buildOpenAIResponse,
@@ -17,8 +18,8 @@ function createStubRunner(calls: Array<{ prompt: string; options: RunOptions }> 
         createdAt: 1,
         content: "hello world",
         usage: {
+          ...createEmptyUsage(),
           inputTokens: 11,
-          cacheReadInputTokens: 0,
           outputTokens: 3,
           totalTokens: 14
         },
@@ -52,8 +53,8 @@ function createStubRunner(calls: Array<{ prompt: string; options: RunOptions }> 
           createdAt: 1,
           content: "hello world",
           usage: {
+            ...createEmptyUsage(),
             inputTokens: 11,
-            cacheReadInputTokens: 0,
             outputTokens: 3,
             totalTokens: 14
           },
@@ -75,8 +76,8 @@ test("buildOpenAIResponse maps core results into response objects", () => {
     prompt: "Hello",
     content: "hello world",
     usage: {
+      ...createEmptyUsage(),
       inputTokens: 11,
-      cacheReadInputTokens: 0,
       outputTokens: 3,
       totalTokens: 14
     },

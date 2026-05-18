@@ -1,11 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "dist",
-    "tsBuildInfoFile": ".tsbuildinfo",
-    "composite": true
+    "noEmit": true
   },
-  "references": [{ "path": "../claude-code-to-llm" }],
-  "include": ["src/**/*.ts"]
+  "references": [
+    { "path": "./tsconfig.build.json" },
+    { "path": "../claude-code-to-llm/tsconfig.build.json" }
+  ],
+  "include": ["scripts/**/*.ts", "test/**/*.ts"]
 }

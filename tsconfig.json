@@ -2,7 +2,7 @@
   "files": [],
   "references": [
     { "path": "./tsconfig.scripts.json" },
-    { "path": "./packages/claude-code-to-llm" },
-    { "path": "./packages/claude-code-to-llm-server" }
+    { "path": "./packages/claude-code-to-llm/tsconfig.build.json" },
+    { "path": "./packages/claude-code-to-llm-server/tsconfig.build.json" }
   ]
 }

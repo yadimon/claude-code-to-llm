@@ -28,7 +28,9 @@ test("published files include docker assets only", () => {
 });
 
 test("tsconfig writes the build info file outside dist", () => {
-  const tsconfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "tsconfig.json"), "utf8")) as {
+  const tsconfig = JSON.parse(
+    fs.readFileSync(path.join(process.cwd(), "tsconfig.build.json"), "utf8")
+  ) as {
     compilerOptions: { tsBuildInfoFile?: string };
   };
   const buildInfoPath = tsconfig.compilerOptions.tsBuildInfoFile || "";

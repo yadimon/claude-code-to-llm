@@ -1,3 +1,4 @@
+import { createEmptyUsage } from "@yadimon/claude-code-to-llm";
 import { startServer } from "../src/index.js";
 
 const started = await startServer({
@@ -12,9 +13,8 @@ const started = await startServer({
         createdAt: Math.floor(Date.now() / 1000),
         content: "ok",
         usage: {
+          ...createEmptyUsage(),
           inputTokens: 1,
-          cacheCreationInputTokens: 0,
-          cacheReadInputTokens: 0,
           outputTokens: 1,
           totalTokens: 2
         },
@@ -44,9 +44,8 @@ const started = await startServer({
           createdAt: Math.floor(Date.now() / 1000),
           content: "ok",
           usage: {
+            ...createEmptyUsage(),
             inputTokens: 1,
-            cacheCreationInputTokens: 0,
-            cacheReadInputTokens: 0,
             outputTokens: 1,
             totalTokens: 2
           },
