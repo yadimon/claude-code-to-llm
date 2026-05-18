@@ -42,6 +42,7 @@
     "smoke:cli": "tsx ./src/cli.ts --prompt \"Hi\" --json --model claude-sonnet-4-6",
     "smoke:sdk": "tsx ./scripts/smoke-sdk.ts",
     "smoke:search": "tsx ./scripts/smoke-search.ts",
+    "smoke:tokens": "tsx ./scripts/smoke-tokens.ts",
     "prepack": "npm run test && npm run build",
     "test": "tsx ./scripts/run-node-tests.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"

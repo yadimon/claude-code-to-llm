@@ -231,7 +231,9 @@ test("server forwards max_output_tokens and reasoning effort to the runner", asy
         max_output_tokens: 500,
         reasoning: {
           effort: "high"
-        }
+        },
+        instructions: "Be concise.",
+        web_search: true
       })
     });
 
@@ -239,7 +241,65 @@ test("server forwards max_output_tokens and reasoning effort to the runner", asy
     assert.equal(calls.length, 1);
     assert.equal(calls[0].options.maxTokens, 500);
     assert.equal(calls[0].options.reasoningEffort, "high");
-    assert.match(calls[0].prompt, /## Conversation/);
+    assert.equal(calls[0].options.webSearch, true);
+    assert.equal(calls[0].options.systemPrompt, "Be concise.");
+    // Single-string input is forwarded verbatim — no wrapper headers.
+    assert.equal(calls[0].prompt, "Hello");
+  } finally {
+    await started.close();
+  }
+});
+
+test("server serializes multi-turn conversation with minimal role prefixes", async () => {
+  const calls: Array<{ prompt: string; options: RunOptions }> = [];
+  const started = await startServer({
+    host: "127.0.0.1",
+    port: 0,
+    models: ["claude-sonnet-4-6"],
+    runner: createStubRunner(calls)
+  });
+
+  try {
+    const response = await fetch(`${started.url}/v1/responses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        input: [
+          { role: "user", content: "hi" },
+          { role: "assistant", content: "hello" },
+          { role: "user", content: "how are you" }
+        ]
+      })
+    });
+    assert.equal(response.status, 200);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].prompt, "User: hi\n\nAssistant: hello\n\nUser: how are you");
+    assert.notEqual(calls[0].options.webSearch, true);
+  } finally {
+    await started.close();
+  }
+});
+
+test("server rejects invalid web_search type with 400", async () => {
+  const started = await startServer({
+    host: "127.0.0.1",
+    port: 0,
+    models: ["claude-sonnet-4-6"],
+    runner: createStubRunner()
+  });
+
+  try {
+    const response = await fetch(`${started.url}/v1/responses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        input: "Hello",
+        web_search: "yes"
+      })
+    });
+    assert.equal(response.status, 400);
   } finally {
     await started.close();
   }

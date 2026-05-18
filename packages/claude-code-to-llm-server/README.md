@@ -115,8 +115,12 @@ curl http://127.0.0.1:3000/v1/responses \
 - `POST /v1/responses` validates requested models against `CLAUDE_CODE_TO_LLM_SERVER_MODELS`.
 - `max_output_tokens` and `reasoning.effort` are forwarded to the core runner.
 - Unsupported request fields such as `tools`, `tool_choice`, or `input_image` return `400`.
-- The server owns prompt adaptation for `instructions` and multi-message dialog input before calling the raw core runner.
-- `--search` / `webSearch: true` is a server-wide policy: when enabled it allows the underlying `claude` CLI to use `WebSearch` for every request. There is no per-request opt-in (`tools` is rejected). Web-search usage is captured by the core runner but not surfaced in the OpenAI `usage` block.
+- The server is a thin pass-through. Request → core runner mapping:
+  - `input: "say hi"` → prompt sent verbatim (no wrapper headers, no preamble).
+  - `input: [{role, content}, …]` → joined with minimal `Role: content` prefixes per turn.
+  - `instructions: "…"` → forwarded as `--system-prompt` to claude (replaces the default Claude Code preset). Omit for the smallest possible call.
+  - `web_search: true` (proprietary extension) → enables Claude Code's WebSearch tool for the request. The `tools` field stays rejected.
+- `--search` / `webSearch: true` at the server level is a process-wide default override; the per-request `web_search` field wins. Web-search usage is captured by the core runner but not surfaced in the OpenAI `usage` block.
 
 ## Docker
 

@@ -5,7 +5,7 @@ import fs from "node:fs";
 const args = process.argv.slice(2);
 
 if (args[0] === "--version") {
-  console.log("fake-claude 1.0.0");
+  console.log("2.99.0 (fake-claude)");
   process.exit(0);
 }
 

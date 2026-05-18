@@ -14,6 +14,7 @@ export interface RunOptions {
   cwd?: string;
   responseId?: string;
   webSearch?: boolean;
+  systemPrompt?: string;
 }
 
 export interface NormalizedRunOptions {
@@ -23,6 +24,7 @@ export interface NormalizedRunOptions {
   timeoutMs: number;
   cliPath: string;
   webSearch: boolean;
+  systemPrompt?: string;
 }
 
 export interface UsageSummary {

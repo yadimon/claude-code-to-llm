@@ -28,6 +28,7 @@
     "test:docker": "tsx ./scripts/run-npm-workspace.ts @yadimon/claude-code-to-llm-server test:docker",
     "test:all": "tsx ./scripts/run-workspace-tests.ts && tsx ./scripts/run-npm-workspace.ts @yadimon/claude-code-to-llm-server test:docker",
     "smoke:core": "tsx ./scripts/run-npm-workspace.ts @yadimon/claude-code-to-llm smoke:sdk",
+    "smoke:tokens": "tsx ./scripts/run-npm-workspace.ts @yadimon/claude-code-to-llm smoke:tokens",
     "smoke:server": "tsx ./scripts/run-npm-workspace.ts @yadimon/claude-code-to-llm-server smoke",
     "smoke:published-core": "node ./scripts/smoke-published.mjs core",
     "smoke:published-server": "node ./scripts/smoke-published.mjs server",

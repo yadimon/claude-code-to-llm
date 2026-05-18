@@ -29,6 +29,9 @@ export interface ResponsesRequestBody {
   reasoning?: {
     effort?: string;
   };
+  // Proprietary extension: enable Claude Code's built-in WebSearch tool.
+  // OpenAI's `tools` field stays rejected to keep the surface narrow.
+  web_search?: boolean;
   tools?: unknown;
   tool_choice?: unknown;
   conversation?: unknown;
@@ -55,7 +58,6 @@ export interface ServerOptions extends RunOptions {
 
 type HttpError = Error & { statusCode: number };
 type ServerPromptInput = {
-  instructions?: string;
   input?: ResponsesInput;
 };
 type MessageRole = "system" | "developer" | "user" | "assistant";
@@ -402,25 +404,35 @@ function validateRequestedModel(model: string | undefined, models: string[]): vo
 }
 
 function requestToPrompt(body: ResponsesRequestBody): string {
-  return serializeServerPrompt({
-    instructions: body.instructions,
-    input: body.input
-  });
+  return serializeServerPrompt({ input: body.input });
 }
 
 function requestToRunOptions(body: ResponsesRequestBody, options: ServerOptions): RunOptions {
   validateReasoningEffort(body.reasoning?.effort);
   validateMaxOutputTokens(body.max_output_tokens);
+  if (body.web_search != null && typeof body.web_search !== "boolean") {
+    throw createHttpError(400, "web_search must be a boolean");
+  }
+  if (body.instructions != null && typeof body.instructions !== "string") {
+    throw createHttpError(400, "instructions must be a string");
+  }
 
-  return {
+  const runOptions: RunOptions = {
     model:
       body.model ||
       options.defaultModel ||
       process.env.CLAUDE_CODE_TO_LLM_SERVER_DEFAULT_MODEL ||
       DEFAULT_MODEL,
     maxTokens: body.max_output_tokens ?? undefined,
-    reasoningEffort: body.reasoning?.effort ?? undefined
+    reasoningEffort: body.reasoning?.effort ?? undefined,
+    systemPrompt: body.instructions && body.instructions.trim() ? body.instructions : undefined
   };
+  // Only override the server-level webSearch default when the request
+  // explicitly provides it — otherwise let the operator's default flow.
+  if (body.web_search != null) {
+    runOptions.webSearch = body.web_search;
+  }
+  return runOptions;
 }
 
 function validateReasoningEffort(effort: string | undefined): void {
@@ -597,32 +609,28 @@ function isHttpError(error: unknown): error is HttpError {
   );
 }
 
+// Pass-through prompt builder. The goal is to keep the wire token count
+// as close to the raw user content as possible: instructions go through
+// the runner's --system-prompt slot (handled in requestToRunOptions),
+// single-turn inputs flow through verbatim, and multi-turn conversations
+// get only a thin "Role:" prefix per message.
 function serializeServerPrompt(input: ServerPromptInput): string {
   const normalized = normalizeServerPromptInput(input);
-  const sections = [
-    "You are being called through a stateless LLM adapter.",
-    "Use the conversation exactly as provided and answer as the assistant."
-  ];
-
-  if (normalized.instructions) {
-    sections.push(`## Instructions\n${normalized.instructions}`);
+  if (normalized.messages.length === 1) {
+    return normalized.messages[0].content;
   }
-
-  const conversation = normalized.messages
-    .map(message => `### ${message.role}\n${message.content}`)
+  return normalized.messages
+    .map(message => `${capitalizeRole(message.role)}: ${message.content}`)
     .join("\n\n");
-  sections.push(`## Conversation\n${conversation}`);
-  sections.push("## Assistant Response\nRespond to the latest conversation turn.");
+}
 
-  return sections.join("\n\n");
+function capitalizeRole(role: MessageRole): string {
+  return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
 function normalizeServerPromptInput(input: ServerPromptInput): {
-  instructions?: string;
   messages: Array<{ role: MessageRole; content: string }>;
 } {
-  const instructions =
-    input.instructions == null ? undefined : normalizeText(input.instructions, "instructions");
   const messages: Array<{ role: MessageRole; content: string }> = [];
   const source = input.input;
 
@@ -662,7 +670,7 @@ function normalizeServerPromptInput(input: ServerPromptInput): {
     throw createHttpError(400, "input is required");
   }
 
-  return { instructions, messages };
+  return { messages };
 }
 
 function normalizeMessageEntries(

@@ -105,7 +105,44 @@ Supported CLI options:
 - The wrapper calls `claude --print --output-format stream-json`.
 - `maxTokens` maps to `CLAUDE_CODE_MAX_OUTPUT_TOKENS` for the spawned Claude Code process.
 - The package is intentionally focused on raw prompt execution. It does not expose Claude Code tools through its public API.
-- Web search is off by default. The wrapper always forces the `WebSearch` permission via `--allowed-tools WebSearch` (when `webSearch: true` / `--search`) or `--disallowed-tools WebSearch`, overriding any `WebSearch` entry in `settings.json`.
+- Web search is off by default. Enable per-call with `webSearch: true` (SDK) or `--search` (CLI).
+- Requires Claude Code CLI `>= 2.1.0`. The runner detects the version on first call and fails with an upgrade hint if it's older — install or refresh via `npm i -g @anthropic-ai/claude-code`.
+
+## Minimal Mode (always on, since 0.5)
+
+`runPrompt` / `streamPrompt` always spawn `claude` in **minimal mode** — every Claude Code framework feature that isn't required for a one-shot LLM call is stripped before the prompt is sent. There is no toggle; this is the package's reason to exist.
+
+Measured floor on `claude-sonnet-4-6` with a 3-token user prompt and OAuth/subscription auth: **~2k input tokens** (almost entirely cache-creation on the first call, hits cache-read on subsequent calls within the TTL). Down from ~42k on a full Claude Code session.
+
+Flags forced on every call:
+
+- `--tools ""` — strip every built-in tool schema (Read, Edit, Write, Bash, Glob, Grep, …). When `webSearch: true`, `--tools WebSearch` instead.
+- `--disable-slash-commands` — keep `/skill` metadata out of context.
+- `--system-prompt ""` (or your `systemPrompt` value) — replace the default "You are Claude Code…" preset. This also disables the dynamic cwd/env/git/memory sections (they're tied to the default preset).
+- `--no-session-persistence` — every call is isolated.
+
+What stays on:
+
+- **OAuth / subscription auth.** The package never passes `--bare`, which would force `ANTHROPIC_API_KEY` and bypass the keychain.
+- `webSearch: true` opts WebSearch back in for individual calls.
+
+### Custom system prompt
+
+Pass `systemPrompt` to replace the empty default with your own instructions:
+
+```ts
+await runPrompt(userMessage, {
+  systemPrompt: "Du bist ein deutscher Klassifikator. Antworte als JSON {\"tags\": [...]}."
+});
+```
+
+There is no `appendSystemPrompt` option — appending would re-attach Claude Code's heavy default preset, defeating minimal mode. Build your own full prompt string instead.
+
+### Verifying the token budget
+
+`npm run smoke:tokens` runs the same `say hi` prompt 3 times and reports a per-call usage breakdown (input / cacheCreate / cacheRead / output). It asserts that the **minimum** `inputTokens + cacheCreationInputTokens + cacheReadInputTokens` across the 3 runs stays under a budget (default `8000`, tune via `SMOKE_TOKENS_BUDGET`).
+
+Observed today on `claude-sonnet-4-6` with subscription auth: ~7.4k tokens/call. Note that `cacheRead` is consistently `0` even across identical back-to-back calls — Claude Code's `-p / --print` flow does not appear to reuse Anthropic's prompt cache. The floor varies over days/sessions, likely driven by Anthropic-side framework prompt changes.
 
 ## Development
 

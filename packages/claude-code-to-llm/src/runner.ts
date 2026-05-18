@@ -8,7 +8,7 @@ import {
   normalizeUsage,
   parseClaudeEventLine
 } from "./parse.js";
-import { assertCliPathExists, normalizeSpawnError } from "./platform.js";
+import { assertClaudeVersion, assertCliPathExists, normalizeSpawnError } from "./platform.js";
 import { AsyncQueue } from "./queue.js";
 import { resolveSpawn } from "./spawn.js";
 import { createClaudeCodeHome, createWorkspace, cleanupDirectory } from "./workspace.js";
@@ -61,8 +61,17 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
   }
 
   const normalizedOptions = normalizeRunOptions(options);
-  const { model, reasoningEffort, maxTokens, timeoutMs, cliPath, webSearch } = normalizedOptions;
+  const {
+    model,
+    reasoningEffort,
+    maxTokens,
+    timeoutMs,
+    cliPath,
+    webSearch,
+    systemPrompt
+  } = normalizedOptions;
   assertCliPathExists(cliPath);
+  assertClaudeVersion(cliPath);
   const ownsWorkspace = !options.cwd;
   const ownsClaudeHome = !options.configHome;
   let workspace: string | undefined;
@@ -104,8 +113,22 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
     "--effort",
     reasoningEffort,
     "--no-session-persistence",
-    webSearch ? "--allowed-tools" : "--disallowed-tools",
-    "WebSearch"
+    // Minimal-by-default: strip Claude Code's full framework from each
+    // call so the model sees ~only the user prompt.
+    //   --tools ""                   strip built-in tool schemas
+    //   --disable-slash-commands     strip /skill metadata
+    //   --system-prompt ""           replace the default "You are
+    //                                Claude Code…" prompt and skip
+    //                                its dynamic cwd/env/git/memory
+    //                                sections entirely
+    // OAuth/subscription auth is preserved (--bare would force
+    // ANTHROPIC_API_KEY and is intentionally not used). Web search
+    // is opt-in via `webSearch`.
+    "--tools",
+    webSearch ? "WebSearch" : "",
+    "--disable-slash-commands",
+    "--system-prompt",
+    systemPrompt ?? ""
   ];
 
   queue.push({
@@ -295,7 +318,8 @@ export function normalizeRunOptions(options: RunOptions = {}): NormalizedRunOpti
     maxTokens: normalizeMaxTokens(options.maxTokens),
     timeoutMs: normalizeTimeout(options.timeout),
     cliPath: normalizeCliPath(options.cliPath),
-    webSearch: options.webSearch === true
+    webSearch: options.webSearch === true,
+    systemPrompt: typeof options.systemPrompt === "string" ? options.systemPrompt : undefined
   };
 }
 

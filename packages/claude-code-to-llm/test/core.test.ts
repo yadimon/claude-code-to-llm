@@ -11,6 +11,27 @@ import {
   normalizeSpawnError
 } from "../src/index.js";
 
+// Windows .cmd shims re-expand args via `%*`, which surfaces an empty
+// argument as the literal 2-char string `""`. The real claude CLI is a
+// `.exe` (no shim, no re-expansion), so this only affects fake-claude
+// fixtures — treat both forms as equivalent in assertions.
+function normalizeEmpty(arg: string | undefined): string {
+  return arg === "\"\"" ? "" : (arg ?? "");
+}
+
+function assertMinimalArgs(args: string[], { webSearch }: { webSearch: boolean }): void {
+  const toolsIdx = args.indexOf("--tools");
+  assert.notEqual(toolsIdx, -1, "expected --tools flag");
+  assert.equal(normalizeEmpty(args[toolsIdx + 1]), webSearch ? "WebSearch" : "");
+  assert.ok(args.includes("--disable-slash-commands"));
+  const sysIdx = args.indexOf("--system-prompt");
+  assert.notEqual(sysIdx, -1, "expected --system-prompt flag");
+  assert.equal(normalizeEmpty(args[sysIdx + 1]), "");
+  assert.ok(!args.includes("--allowed-tools"));
+  assert.ok(!args.includes("--disallowed-tools"));
+  assert.ok(!args.includes("--exclude-dynamic-system-prompt-sections"));
+}
+
 function writeAuthBundle(rootDir: string): { sessionPath: string; credentialsPath: string } {
   const sessionPath = path.join(rootDir, ".claude.json");
   const claudeDir = path.join(rootDir, ".claude");
@@ -88,7 +109,7 @@ test("createClaudeCodeExitError prefers stderr or parsed result messages over ge
   );
 });
 
-test("runPrompt forwards web search choice to the claude CLI", async () => {
+test("runPrompt spawns claude in minimal mode and forwards web search opt-in", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "claude-code-to-llm-websearch-"));
   const { sessionPath, credentialsPath } = writeAuthBundle(tempDir);
   const capturePath = path.join(tempDir, "capture.json");
@@ -117,10 +138,7 @@ test("runPrompt forwards web search choice to the claude CLI", async () => {
       args: string[];
       stdin: string;
     };
-    const enabledIdx = enabledCapture.args.indexOf("--allowed-tools");
-    assert.notEqual(enabledIdx, -1);
-    assert.equal(enabledCapture.args[enabledIdx + 1], "WebSearch");
-    assert.ok(!enabledCapture.args.includes("--disallowed-tools"));
+    assertMinimalArgs(enabledCapture.args, { webSearch: true });
     assert.ok(!enabledCapture.args.includes("Hello"));
     assert.equal(enabledCapture.stdin, "Hello");
 
@@ -134,12 +152,27 @@ test("runPrompt forwards web search choice to the claude CLI", async () => {
       args: string[];
       stdin: string;
     };
-    const disabledIdx = disabledCapture.args.indexOf("--disallowed-tools");
-    assert.notEqual(disabledIdx, -1);
-    assert.equal(disabledCapture.args[disabledIdx + 1], "WebSearch");
-    assert.ok(!disabledCapture.args.includes("--allowed-tools"));
+    assertMinimalArgs(disabledCapture.args, { webSearch: false });
     assert.ok(!disabledCapture.args.includes("Hello"));
     assert.equal(disabledCapture.stdin, "Hello");
+
+    await runPrompt("Hello", {
+      authPath: sessionPath,
+      credentialsPath,
+      cliPath,
+      timeout: 5000,
+      // Single token avoids Windows cmd-shim arg-splitting in the fixture;
+      // real claude is a .exe so production isn't affected.
+      systemPrompt: "minimal"
+    });
+    const customCapture = JSON.parse(fs.readFileSync(capturePath, "utf8")) as {
+      args: string[];
+      stdin: string;
+    };
+    const customIdx = customCapture.args.indexOf("--system-prompt");
+    assert.notEqual(customIdx, -1);
+    assert.equal(customCapture.args[customIdx + 1], "minimal");
+    assert.ok(!customCapture.args.includes("--append-system-prompt"));
   } finally {
     if (previousCapture == null) {
       delete process.env.FAKE_CLAUDE_CAPTURE_FILE;
