@@ -1,6 +1,6 @@
 {
   "name": "@yadimon/claude-code-to-llm-server",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "Use Claude Code as a simple OpenAI-compatible Responses server",
   "type": "module",
   "main": "./dist/index.js",
@@ -48,7 +48,7 @@
     "typecheck": "tsc -b tsconfig.build.json && tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@yadimon/claude-code-to-llm": "^0.5.0"
+    "@yadimon/claude-code-to-llm": "^0.5.1"
   },
   "keywords": [
     "claude",
