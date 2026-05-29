@@ -11,7 +11,7 @@ npm install @yadimon/claude-code-to-llm
 Requirements:
 
 - Node.js `>=20`
-- installed `claude` CLI in `PATH` or `CLAUDE_CODE_TO_LLM_CLI_PATH`
+- installed `claude` CLI in `PATH` or `CLAUDE_CODE_TO_LLM_CLI_PATH` for the default CLI-backed mode
 - valid Claude Code login on the machine
 
 The wrapper defaults to the Claude Code auth bundle at:
@@ -31,6 +31,7 @@ claude auth status
 - a CLI for direct prompt mode from flags, files, or stdin
 - structured streaming events for adapters such as HTTP compatibility servers
 - isolated execution via a temporary home directory copied from your Claude Code auth bundle
+- an explicit `--direct-api-call` escape hatch that bypasses the Claude Code CLI process after risk confirmation
 
 ## SDK
 
@@ -79,6 +80,9 @@ Supported CLI options:
 --reasoning-effort <level>
 --max-tokens <n>
 --search
+--direct-api-call
+--accept-direct-api-call-risk
+--direct-api-base-url <url>
 --auth-path <path>
 --credentials-path <path>
 --settings-path <path>
@@ -99,6 +103,9 @@ Supported CLI options:
 | `CLAUDE_CODE_TO_LLM_CONFIG_HOME` | temp dir | Temporary Claude Code home directory for a run. |
 | `CLAUDE_CODE_TO_LLM_WORKSPACE` | temp dir | Workspace directory used for execution. |
 | `CLAUDE_CODE_TO_LLM_LOCAL_HOME` | `.claude-code-to-llm/` | Local directory used by the auth copy helper. |
+| `CLAUDE_CODE_TO_LLM_ACCEPT_DIRECT_API_CALL_RISK` | - | Required value `1` to use `--direct-api-call` without passing `--accept-direct-api-call-risk`. |
+| `CLAUDE_CODE_TO_LLM_DIRECT_API_BASE_URL` | `https://api.anthropic.com` | Base URL for experimental direct Messages calls. |
+| `CLAUDE_CODE_OAUTH_TOKEN` | - | Optional Claude Code OAuth token used by direct mode before reading the credentials file. |
 
 ## Notes
 
@@ -107,6 +114,73 @@ Supported CLI options:
 - The package is intentionally focused on raw prompt execution. It does not expose Claude Code tools through its public API.
 - Web search is off by default. Enable per-call with `webSearch: true` (SDK) or `--search` (CLI).
 - Requires Claude Code CLI `>= 2.1.0`. The runner detects the version on first call and fails with an upgrade hint if it's older — install or refresh via `npm i -g @anthropic-ai/claude-code`.
+
+## Direct API Call Mode
+
+`--direct-api-call` is an explicit, off-by-default bypass for the local Claude Code CLI process. It maps the prompt to Anthropic's Messages endpoint with Claude Code OAuth credentials and returns the same SDK/CLI response shape. It does not create a temp repo, does not run `claude --print`, and does not add Claude Code tool or slash-command context.
+
+For Claude Code OAuth compatibility, direct mode sends a short Claude-Code-style transport identity block in `system[]`:
+
+```json
+{ "type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude." }
+```
+
+It does not send Claude Code's full agent prompt, project context, tool schemas, slash-command metadata, or dynamic cwd/git/memory sections.
+
+You must confirm the risk every time with a flag, or set the confirmation environment variable once for a shell/session:
+
+```bash
+claude-code-to-llm \
+  --direct-api-call \
+  --accept-direct-api-call-risk \
+  --prompt "Translate to German: Good morning" \
+  --max-tokens 80
+```
+
+```powershell
+$env:CLAUDE_CODE_TO_LLM_ACCEPT_DIRECT_API_CALL_RISK = "1"
+npx @yadimon/claude-code-to-llm --direct-api-call --prompt "Translate to German: Good morning"
+```
+
+Direct mode reads auth in this order:
+
+1. `CLAUDE_CODE_OAUTH_TOKEN`
+2. `CLAUDE_CODE_TO_LLM_CREDENTIALS_PATH`
+3. `~/.claude/.credentials.json`
+
+Use `claude setup-token` if you need a long-lived OAuth token for scripts. Do not expose a direct-mode process to untrusted users or networks.
+
+### Parallel Translation Example
+
+For many tiny translation/classification calls, direct mode can be useful because it avoids starting the Claude Code agent harness for each element. A typical pattern is to confirm the risk once, then have Claude Code fan out multiple small direct calls:
+
+```powershell
+$env:CLAUDE_CODE_TO_LLM_ACCEPT_DIRECT_API_CALL_RISK = "1"
+claude -p "Run 20 translation tasks in parallel. For each element, call: npx @yadimon/claude-code-to-llm --direct-api-call --max-tokens 120 --json --prompt '<translate this one element to German, preserving placeholders>'. Return a JSON array in the original order."
+```
+
+If your account supports a weaker/faster model, pass it explicitly:
+
+```bash
+npx @yadimon/claude-code-to-llm \
+  --direct-api-call \
+  --accept-direct-api-call-risk \
+  --model <weak-translation-model> \
+  --max-tokens 120 \
+  --prompt "Translate to German: Reset password"
+```
+
+### Policy and Proxy Source Notes
+
+This feature is intentionally described as experimental. Anthropic's Consumer Terms prohibit automated or non-human access except through an Anthropic API key or explicit permission, and prohibit account sharing/resale. Claude Code's own docs document bearer-token auth, `CLAUDE_CODE_OAUTH_TOKEN`, and LLM gateways/proxies for Claude Code CLI use. That is not the same as Anthropic endorsing subscription OAuth as a general third-party API proxy surface.
+
+Relevant source links:
+
+- Anthropic Consumer Terms: https://www.anthropic.com/legal/consumer-terms
+- Claude Code authentication docs: https://code.claude.com/docs/en/authentication
+- Claude Code proxy/gateway docs: https://code.claude.com/docs/en/bedrock-vertex-proxies
+- OmniRoute marks Claude Code OAuth as subscription-risk: https://raw.githubusercontent.com/diegosouzapw/OmniRoute/main/src/shared/constants/providers.ts
+- Public reporting on Anthropic cutting off third-party harness subscription coverage: https://techcrunch.com/2026/04/04/anthropic-says-claude-code-subscribers-will-need-to-pay-extra-for-openclaw-support/
 
 ## Minimal Mode (always on, since 0.5)
 

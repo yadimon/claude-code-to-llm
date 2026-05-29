@@ -6,3 +6,4 @@ export * from "./platform.js";
 export * from "./workspace.js";
 export * from "./parse.js";
 export * from "./runner.js";
+export * from "./direct-api.js";

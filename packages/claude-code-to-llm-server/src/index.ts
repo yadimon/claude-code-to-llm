@@ -2,6 +2,7 @@ import { createServer as createHttpServer, type IncomingMessage, type ServerResp
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import {
   DEFAULT_MODEL,
+  createDirectApiRunner,
   createEmptyUsage,
   runPrompt as defaultRunPrompt,
   streamPrompt as defaultStreamPrompt
@@ -10,6 +11,7 @@ import type { CoreResponse, RunOptions, StreamEvent } from "@yadimon/claude-code
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 3000;
+type ServerBackend = "claude-cli" | "claude-oauth";
 const UNSUPPORTED_REQUEST_FIELDS = [
   "tools",
   "tool_choice",
@@ -53,6 +55,9 @@ export interface ServerOptions extends RunOptions {
   defaultModel?: string;
   apiKey?: string;
   mockMode?: string | boolean;
+  backend?: ServerBackend;
+  directApiBaseUrl?: string;
+  claudeOAuthBaseUrl?: string;
   runner?: Runner;
 }
 
@@ -111,6 +116,7 @@ export function createServer(options: ServerOptions = {}) {
         assertAuthorized(request, apiKey);
         const body = await readJsonBody(request);
         validateResponsesRequest(body);
+        validateBackendSpecificRequest(body, options);
         validateRequestedModel(body.model, models);
         const prompt = requestToPrompt(body);
         const runOptions = requestToRunOptions(body, options);
@@ -219,6 +225,18 @@ function createDefaultRunner(options: ServerOptions): Runner {
     return createMockRunner(options);
   }
 
+  const backend = resolveBackend(options);
+  if (backend === "claude-oauth") {
+    return createDirectApiRunner({
+      ...defaultRunnerOptions(options),
+      directApiBaseUrl:
+        options.directApiBaseUrl ||
+        options.claudeOAuthBaseUrl ||
+        process.env.CLAUDE_CODE_TO_LLM_DIRECT_API_BASE_URL ||
+        process.env.CLAUDE_CODE_TO_LLM_CLAUDE_OAUTH_BASE_URL
+    });
+  }
+
   return {
     runPrompt(prompt, requestOptions = {}) {
       return defaultRunPrompt(prompt, {
@@ -233,6 +251,15 @@ function createDefaultRunner(options: ServerOptions): Runner {
       });
     }
   };
+}
+
+function resolveBackend(options: ServerOptions): ServerBackend {
+  const backend = options.backend || process.env.CLAUDE_CODE_TO_LLM_BACKEND || "claude-cli";
+  if (backend === "claude-cli" || backend === "claude-oauth") {
+    return backend;
+  }
+
+  throw createHttpError(400, "Invalid backend: expected claude-cli or claude-oauth");
 }
 
 function createMockRunner(options: ServerOptions): Runner {
@@ -391,6 +418,25 @@ function validateResponsesRequest(body: ResponsesRequestBody): void {
       throw createHttpError(400, `${field} is not supported`);
     }
   }
+}
+
+function validateBackendSpecificRequest(body: ResponsesRequestBody, options: ServerOptions): void {
+  if (usesClaudeOAuthBackend(options) && body.web_search === true) {
+    throw createHttpError(400, "web_search is not supported by claude-oauth");
+  }
+}
+
+function usesClaudeOAuthBackend(options: ServerOptions): boolean {
+  if (options.runner) {
+    return false;
+  }
+
+  const mockMode = options.mockMode || process.env.CLAUDE_CODE_TO_LLM_SERVER_MOCK_MODE;
+  if (mockMode && mockMode !== "off") {
+    return false;
+  }
+
+  return resolveBackend(options) === "claude-oauth";
 }
 
 function validateRequestedModel(model: string | undefined, models: string[]): void {

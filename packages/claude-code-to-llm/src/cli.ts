@@ -3,7 +3,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createCliArgReader, runPrompt, streamPrompt } from "./index.js";
+import {
+  createCliArgReader,
+  runDirectApiPrompt,
+  runPrompt,
+  streamDirectApiPrompt,
+  streamPrompt
+} from "./index.js";
 import type { RunOptions } from "./types.js";
 
 const args = process.argv.slice(2);
@@ -25,6 +31,9 @@ Options:
   --reasoning-effort <level>
   --max-tokens <n>
   --search
+  --direct-api-call
+  --accept-direct-api-call-risk
+  --direct-api-base-url <url>
   --auth-path <path>
   --credentials-path <path>
   --settings-path <path>
@@ -79,6 +88,35 @@ function buildRunOptions(): RunOptions {
   };
 }
 
+function buildDirectApiRunOptions(): RunOptions & { directApiBaseUrl?: string } {
+  return {
+    ...buildRunOptions(),
+    directApiBaseUrl: getArg("--direct-api-base-url")
+  };
+}
+
+function assertDirectApiRiskAccepted(): void {
+  if (
+    hasFlag("--accept-direct-api-call-risk") ||
+    process.env.CLAUDE_CODE_TO_LLM_ACCEPT_DIRECT_API_CALL_RISK === "1"
+  ) {
+    return;
+  }
+
+  throw new Error(
+    "To use --direct-api-call, accept the direct API call risk with --accept-direct-api-call-risk or CLAUDE_CODE_TO_LLM_ACCEPT_DIRECT_API_CALL_RISK=1."
+  );
+}
+
+function warnDirectApiCall(): void {
+  console.error(
+    [
+      "WARNING: --direct-api-call bypasses the Claude Code CLI process and uses Claude OAuth credentials directly.",
+      "This is experimental, is not the normal ANTHROPIC_API_KEY billing path, and may be restricted or blocked by Anthropic."
+    ].join("\n")
+  );
+}
+
 export async function main(): Promise<void> {
   if (hasFlag("--help") || hasFlag("-h")) {
     console.log(HELP_TEXT);
@@ -86,10 +124,17 @@ export async function main(): Promise<void> {
   }
 
   const input = await readCliInput();
-  const options = buildRunOptions();
+  const directApiCall = hasFlag("--direct-api-call");
+  const options = directApiCall ? buildDirectApiRunOptions() : buildRunOptions();
+  const run = directApiCall ? runDirectApiPrompt : runPrompt;
+  const stream = directApiCall ? streamDirectApiPrompt : streamPrompt;
+  if (directApiCall) {
+    assertDirectApiRiskAccepted();
+    warnDirectApiCall();
+  }
 
   if (hasFlag("--stream")) {
-    for await (const event of streamPrompt(input, options)) {
+    for await (const event of stream(input, options)) {
       if (hasFlag("--json")) {
         process.stdout.write(`${JSON.stringify(event)}\n`);
         continue;
@@ -102,7 +147,7 @@ export async function main(): Promise<void> {
     return;
   }
 
-  const result = await runPrompt(input, options);
+  const result = await run(input, options);
   if (hasFlag("--json")) {
     console.log(JSON.stringify(result, null, 2));
     return;
