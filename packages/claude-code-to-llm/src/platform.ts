@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { resolveSpawnForPlatform } from "./spawn.js";
 
-export const MIN_CLAUDE_VERSION = "2.1.0";
+export const MIN_CLAUDE_VERSION = "2.1.179";
 
 const versionCache = new Map<string, string>();
 

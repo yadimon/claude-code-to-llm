@@ -120,9 +120,9 @@ curl http://127.0.0.1:3000/v1/responses \
 | `CLAUDE_CODE_OAUTH_TOKEN` | - | Optional Claude Code OAuth token used by direct mode before reading the credentials file. |
 | `CLAUDE_CODE_TO_LLM_AUTH_PATH` | `~/.claude.json` | Path to the Claude Code session file. |
 | `CLAUDE_CODE_TO_LLM_CREDENTIALS_PATH` | `~/.claude/.credentials.json` | Path to the Claude Code credentials file. |
-| `CLAUDE_CODE_TO_LLM_SETTINGS_PATH` | `~/.claude/settings.json` when present | Optional settings file copied into the temporary Claude home. |
+| `CLAUDE_CODE_TO_LLM_SETTINGS_PATH` | - | Optional settings file copied into the temporary Claude home. Omit it for the clean minimal runner; user settings are not copied by default. |
 | `CLAUDE_CODE_TO_LLM_CLI_PATH` | `claude` | Path to the Claude Code CLI binary. |
-| `CLAUDE_CODE_TO_LLM_CONFIG_HOME` | temp dir | Temporary Claude Code home directory for a run. |
+| `CLAUDE_CODE_TO_LLM_CONFIG_HOME` | temp dir | Temporary Claude Code home directory for a run. When set, the wrapper does not delete it automatically. |
 | `CLAUDE_CODE_TO_LLM_WORKSPACE` | temp dir | Workspace directory used for execution. |
 | `CLAUDE_CODE_TO_LLM_REASONING_EFFORT` | `low` | Default reasoning effort passed to the core runner. |
 
@@ -131,6 +131,7 @@ curl http://127.0.0.1:3000/v1/responses \
 - `GET /healthz` and `GET /v1/models` stay public even when bearer auth is configured.
 - `POST /v1/responses` validates requested models against `CLAUDE_CODE_TO_LLM_SERVER_MODELS`.
 - `max_output_tokens` and `reasoning.effort` are forwarded to the core runner.
+- The default `claude-cli` backend uses the core package's clean minimal runner: safe mode, no Chrome, no session persistence, no slash commands, no tools unless web search is explicitly enabled, strict empty MCP config, disabled auto-memory/history/checkpointing, and marketplace/telemetry/updater traffic disabled.
 - Unsupported request fields such as `tools`, `tool_choice`, or `input_image` return `400`.
 - The server is a thin pass-through. Request -> runner mapping:
   - `input: "say hi"` -> prompt sent verbatim (no wrapper headers, no preamble).

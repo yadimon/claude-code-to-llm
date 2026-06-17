@@ -14,14 +14,20 @@ function makeTempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "claude-code-to-llm-test-"));
 }
 
-function writeAuthBundle(rootDir: string): { sessionPath: string; credentialsPath: string } {
+function writeAuthBundle(rootDir: string): {
+  sessionPath: string;
+  credentialsPath: string;
+  settingsPath: string;
+} {
   const sessionPath = path.join(rootDir, ".claude.json");
   const claudeDir = path.join(rootDir, ".claude");
   const credentialsPath = path.join(claudeDir, ".credentials.json");
+  const settingsPath = path.join(claudeDir, "settings.json");
   fs.mkdirSync(claudeDir, { recursive: true });
   fs.writeFileSync(sessionPath, "{\"oauthAccount\":{\"email\":\"test@example.com\"}}\n", "utf8");
   fs.writeFileSync(credentialsPath, "{\"claudeAiOauth\":{\"accessToken\":\"x\"}}\n", "utf8");
-  return { sessionPath, credentialsPath };
+  fs.writeFileSync(settingsPath, "{\"mcpServers\":{\"example\":{}}}\n", "utf8");
+  return { sessionPath, credentialsPath, settingsPath };
 }
 
 test("prepareAuthCopy copies the Claude auth bundle to the requested target", () => {
@@ -50,7 +56,7 @@ test("prepareAuthCopy copies the Claude auth bundle to the requested target", ()
   cleanupDirectory(targetDir, true);
 });
 
-test("createClaudeCodeHome writes the Claude auth bundle into the temp home", () => {
+test("createClaudeCodeHome writes minimal Claude runtime state into the temp home", () => {
   const sourceDir = makeTempDir();
   const configHome = makeTempDir();
   const { sessionPath, credentialsPath } = writeAuthBundle(sourceDir);
@@ -62,13 +68,36 @@ test("createClaudeCodeHome writes the Claude auth bundle into the temp home", ()
   });
 
   assert.equal(createdHome, configHome);
-  assert.equal(
-    fs.readFileSync(path.join(configHome, ".claude.json"), "utf8"),
-    "{\"oauthAccount\":{\"email\":\"test@example.com\"}}\n"
-  );
+  assert.equal(fs.readFileSync(path.join(configHome, ".claude.json"), "utf8"), "{}\n");
   assert.equal(
     fs.readFileSync(path.join(configHome, ".claude", ".credentials.json"), "utf8"),
     "{\"claudeAiOauth\":{\"accessToken\":\"x\"}}\n"
+  );
+  assert.equal(fs.existsSync(path.join(configHome, ".claude", "settings.json")), false);
+  assert.equal(
+    fs.readFileSync(path.join(configHome, ".claude-code-to-llm-empty-mcp.json"), "utf8"),
+    "{\"mcpServers\":{}}\n"
+  );
+
+  cleanupDirectory(sourceDir, true);
+  cleanupDirectory(configHome, true);
+});
+
+test("createClaudeCodeHome copies settings only when explicitly requested", () => {
+  const sourceDir = makeTempDir();
+  const configHome = makeTempDir();
+  const { sessionPath, credentialsPath, settingsPath } = writeAuthBundle(sourceDir);
+
+  createClaudeCodeHome({
+    authPath: sessionPath,
+    credentialsPath,
+    settingsPath,
+    configHome
+  });
+
+  assert.equal(
+    fs.readFileSync(path.join(configHome, ".claude", "settings.json"), "utf8"),
+    "{\"mcpServers\":{\"example\":{}}}\n"
   );
 
   cleanupDirectory(sourceDir, true);

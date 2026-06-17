@@ -24,6 +24,13 @@ function assertMinimalArgs(args: string[], { webSearch }: { webSearch: boolean }
   assert.notEqual(toolsIdx, -1, "expected --tools flag");
   assert.equal(normalizeEmpty(args[toolsIdx + 1]), webSearch ? "WebSearch" : "");
   assert.ok(args.includes("--disable-slash-commands"));
+  assert.ok(args.includes("--safe-mode"));
+  assert.ok(args.includes("--no-chrome"));
+  assert.ok(args.includes("--no-session-persistence"));
+  assert.ok(args.includes("--strict-mcp-config"));
+  const mcpConfigIdx = args.indexOf("--mcp-config");
+  assert.notEqual(mcpConfigIdx, -1, "expected --mcp-config flag");
+  assert.match(args[mcpConfigIdx + 1] || "", /empty-mcp\.json$/);
   const sysIdx = args.indexOf("--system-prompt");
   assert.notEqual(sysIdx, -1, "expected --system-prompt flag");
   assert.equal(normalizeEmpty(args[sysIdx + 1]), "");

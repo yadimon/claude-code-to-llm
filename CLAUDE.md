@@ -56,14 +56,14 @@ Tests use `node:test` (no jest/vitest). Test files live at `packages/*/test/*.te
 Public surface re-exported from `index.ts`. Key modules:
 
 - `runner.ts` — `runPrompt` / `streamPrompt`. Spawns the `claude` CLI with `--print --verbose --output-format stream-json`, parses stream-json events line by line, and emits a typed `StreamEvent` async iterable (`response.started`, `response.output_text.delta`, `response.raw_event`, `response.completed`, `response.failed`). `runPrompt` is just `streamPrompt` collapsed to the final completed response. The runner owns timeout, stderr bounding, error normalization, and exit-code interpretation.
-- `workspace.ts` — every run gets an isolated temp `HOME`/`USERPROFILE` populated with copies of the user's auth bundle (`~/.claude.json`, `~/.claude/.credentials.json`, optional `~/.claude/settings.json`). Caller-provided `cwd`/`configHome` are not cleaned up; auto-created ones are.
+- `workspace.ts` — every run gets an isolated temp `HOME`/`USERPROFILE` populated with a minimal Claude home: an empty `.claude.json`, a copied `~/.claude/.credentials.json`, and an empty MCP config. User settings are copied only when `settingsPath` is explicitly provided. Caller-provided `cwd`/`configHome` are not cleaned up; auto-created ones are.
 - `spawn.ts` — Windows `.cmd`/`.bat` shims and extension-less commands are wrapped through `cmd.exe /d /s /c` with proper quoting; everything else is spawned directly. Keep platform-specific behavior explicit and testable.
 - `parse.ts` — stream-json line parsing, assistant text extraction, usage normalization (`input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens` → camelCase `UsageSummary`).
 - `queue.ts` — `AsyncQueue<T>` backing the streaming async iterable.
 - `types.ts` — `RunOptions`, `CoreResponse`, `StreamEvent`, `Runner`, plus `DEFAULT_MODEL = "claude-sonnet-4-6"` and `DEFAULT_REASONING_EFFORT = "low"`.
 - `cli-args.ts`, `cli.ts` — flag/file/stdin input handling for the binary.
 
-The runner passes `--allowed-tools WebSearch` only when `webSearch: true`; otherwise it explicitly disallows `WebSearch`. `CLAUDE_CODE_MAX_OUTPUT_TOKENS` is set from `maxTokens`.
+The runner passes `--tools WebSearch` only when `webSearch: true`; otherwise it passes `--tools ""`. It also forces `--safe-mode`, `--no-chrome`, `--no-session-persistence`, `--disable-slash-commands`, `--strict-mcp-config`, and an empty MCP config. `CLAUDE_CODE_MAX_OUTPUT_TOKENS` is set from `maxTokens`.
 
 ### Server package (`packages/claude-code-to-llm-server/src/`)
 
@@ -82,7 +82,7 @@ The wrapper never mutates the user's real `~/.claude*` files. Override sources v
 
 - `CLAUDE_CODE_TO_LLM_AUTH_PATH` (or `authPath`) — path to `.claude.json`, the `.claude` dir, or a parent home dir.
 - `CLAUDE_CODE_TO_LLM_CREDENTIALS_PATH` (`credentialsPath`)
-- `CLAUDE_CODE_TO_LLM_SETTINGS_PATH` (`settingsPath`)
+- `CLAUDE_CODE_TO_LLM_SETTINGS_PATH` (`settingsPath`) — opt-in only; omitted by default to avoid loading user MCP/plugin/settings state.
 - `CLAUDE_CODE_TO_LLM_CONFIG_HOME` (`configHome`) — pre-built temp home; if provided, the runner will not clean it up.
 - `CLAUDE_CODE_TO_LLM_CLI_PATH` — override the `claude` binary path.
 - `CLAUDE_CODE_TO_LLM_WORKSPACE` — pre-built cwd; same cleanup rule.

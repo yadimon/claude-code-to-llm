@@ -77,14 +77,20 @@ export function createClaudeCodeHome(options: {
   const rootDir =
     options.configHome || fs.mkdtempSync(path.join(os.tmpdir(), "claude-code-to-llm-home-"));
   fs.mkdirSync(path.join(rootDir, ".claude"), { recursive: true });
+  fs.mkdirSync(path.join(rootDir, ".tmp"), { recursive: true });
 
-  fs.copyFileSync(authPaths.sessionPath, path.join(rootDir, ".claude.json"));
+  fs.writeFileSync(path.join(rootDir, ".claude.json"), "{}\n", "utf8");
   fs.copyFileSync(
     authPaths.credentialsPath,
     path.join(rootDir, ".claude", ".credentials.json")
   );
+  fs.writeFileSync(
+    path.join(rootDir, ".claude-code-to-llm-empty-mcp.json"),
+    "{\"mcpServers\":{}}\n",
+    "utf8"
+  );
 
-  if (authPaths.settingsPath && fs.existsSync(authPaths.settingsPath)) {
+  if (options.settingsPath && authPaths.settingsPath && fs.existsSync(authPaths.settingsPath)) {
     fs.copyFileSync(authPaths.settingsPath, path.join(rootDir, ".claude", "settings.json"));
   }
 

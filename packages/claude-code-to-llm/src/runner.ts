@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import * as path from "node:path";
 import {
   createEmptyUsage,
   getAssistantMessageText,
@@ -112,7 +113,12 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
     model,
     "--effort",
     reasoningEffort,
+    "--safe-mode",
+    "--no-chrome",
     "--no-session-persistence",
+    "--strict-mcp-config",
+    "--mcp-config",
+    path.join(claudeHome, ".claude-code-to-llm-empty-mcp.json"),
     // Minimal-by-default: strip Claude Code's full framework from each
     // call so the model sees ~only the user prompt.
     //   --tools ""                   strip built-in tool schemas
@@ -144,12 +150,7 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
   const spawnConfig = resolveSpawn(cliPath, cliArgs);
   const child: ChildProcessWithoutNullStreams = spawn(spawnConfig.command, spawnConfig.args, {
     cwd: workspace,
-    env: {
-      ...process.env,
-      HOME: claudeHome,
-      USERPROFILE: claudeHome,
-      CLAUDE_CODE_MAX_OUTPUT_TOKENS: maxTokens == null ? undefined : String(maxTokens)
-    },
+    env: buildClaudeEnv(claudeHome, maxTokens),
     windowsHide: true
   });
   const timeoutHandle = setTimeout(() => {
@@ -311,6 +312,33 @@ const MAX_STDERR_LENGTH = 64 * 1024;
 const CLI_TOKEN_PATTERN = /^[A-Za-z0-9._:/-]+$/;
 const VALID_REASONING_EFFORTS = new Set(["low", "medium", "high", "max"]);
 
+function buildClaudeEnv(claudeHome: string, maxTokens: number | undefined): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    HOME: claudeHome,
+    USERPROFILE: claudeHome,
+    CLAUDE_CONFIG_DIR: path.join(claudeHome, ".claude"),
+    TEMP: path.join(claudeHome, ".tmp"),
+    TMP: path.join(claudeHome, ".tmp"),
+    CLAUDE_CODE_MAX_OUTPUT_TOKENS: maxTokens == null ? undefined : String(maxTokens),
+    CLAUDE_CODE_SAFE_MODE: "1",
+    CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+    CLAUDE_CODE_SKIP_PROMPT_HISTORY: "1",
+    CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL: "1",
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+    CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
+    CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
+    CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING: "1",
+    CLAUDE_CODE_DISABLE_TERMINAL_TITLE: "1",
+    ENABLE_CLAUDEAI_MCP_SERVERS: "false",
+    DISABLE_AUTOUPDATER: "1",
+    DISABLE_TELEMETRY: "1",
+    DISABLE_ERROR_REPORTING: "1",
+    DISABLE_GROWTHBOOK: "1",
+    DO_NOT_TRACK: "1"
+  };
+}
+
 export function normalizeRunOptions(options: RunOptions = {}): NormalizedRunOptions {
   return {
     model: normalizeCliToken(options.model, DEFAULT_MODEL, "model"),
@@ -327,7 +355,7 @@ function normalizeCliPath(value: string | undefined): string {
   const normalized =
     value ||
     process.env.CLAUDE_CODE_TO_LLM_CLI_PATH ||
-    (process.platform === "win32" ? "claude.exe" : "claude");
+    "claude";
   if (!normalized.trim()) {
     throw new Error("Invalid cliPath: expected a non-empty path or command");
   }
