@@ -86,6 +86,11 @@ npm run release:server:minor
 npm run release:server:major
 ```
 
+Normal releases are published by GitHub Actions Trusted Publishing after the release
+script pushes the matching package tag. Do not run local `npm publish` for normal
+releases; local publish is only for the one-time first-publish bootstrap documented
+in `RELEASING.md`.
+
 The detailed maintainer workflow lives in `RELEASING.md`.
 
 ## Docker

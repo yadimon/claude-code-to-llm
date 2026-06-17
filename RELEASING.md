@@ -24,6 +24,7 @@ Examples:
 This section only matters for a new package name or a fresh registry bootstrap.
 
 For the current published packages, the one-time manual bootstrap publish is already complete.
+Do not use the commands in this section for normal releases.
 
 Before the first publish:
 
@@ -51,6 +52,11 @@ After both packages exist on npm, add a Trusted Publisher for each package in np
 The publish workflow uses GitHub Actions OIDC with the npm version bundled with the selected Node runtime.
 
 ## Normal Release Flow
+
+Normal releases publish through GitHub Actions Trusted Publishing. Do not run
+`npm publish` from the local shell for normal releases; the release scripts push
+the package tags and `.github/workflows/publish.yml` publishes the matching
+package from GitHub.
 
 Choose the package and version bump type:
 

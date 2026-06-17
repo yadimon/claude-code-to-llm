@@ -9,7 +9,7 @@ npm workspace publishing two independent packages from one repo:
 - `packages/claude-code-to-llm` (`@yadimon/claude-code-to-llm`) — core SDK + CLI that wraps `claude -p` (Claude Code headless mode) for raw prompt execution.
 - `packages/claude-code-to-llm-server` (`@yadimon/claude-code-to-llm-server`) — thin HTTP adapter exposing `/v1/responses`, `/v1/models`, `/healthz` (OpenAI Responses-compatible) on top of the core package. The server depends on the core package and must remain a thin adapter — put shared logic in core first.
 
-Versioned independently with package-specific tags (`claude-code-to-llm-v<v>`, `claude-code-to-llm-server-v<v>`); see `RELEASING.md`.
+Versioned independently with package-specific tags (`claude-code-to-llm-v<v>`, `claude-code-to-llm-server-v<v>`); see `RELEASING.md` for release and publishing.
 
 ## Common Commands
 

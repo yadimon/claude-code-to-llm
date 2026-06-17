@@ -19,6 +19,10 @@ This repository is an npm workspace with two published packages.
 - `npm run smoke:server`: boot the server package with a stub runner and print its URL.
 - `npm run start --workspace @yadimon/claude-code-to-llm-server`: start the local HTTP server.
 
+## Release / Publish Workflow
+
+For package releases and publishing, follow `RELEASING.md`.
+
 ## Coding Style & Naming Conventions
 
 Use modern ESM TypeScript only. Match the existing repo style exactly:
