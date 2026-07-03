@@ -1,7 +1,7 @@
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { resolveSpawnForPlatform } from "./spawn.js";
+import { preferWindowsExecutable, resolveSpawnForPlatform } from "./spawn.js";
 
 export const MIN_CLAUDE_VERSION = "2.1.179";
 
@@ -16,7 +16,9 @@ export function explicitCliCandidates(cliPath: string, platform = process.platfo
     return [cliPath];
   }
 
-  return [cliPath, `${cliPath}.cmd`, `${cliPath}.bat`, `${cliPath}.exe`];
+  // Prefer .exe: it is spawned directly, while .cmd/.bat need the cmd.exe
+  // wrapper that cannot forward newline-containing arguments.
+  return [`${cliPath}.exe`, `${cliPath}.cmd`, `${cliPath}.bat`, cliPath];
 }
 
 export function assertCliPathExists(cliPath: string, platform = process.platform): void {
@@ -39,13 +41,25 @@ export function getClaudeVersion(cliPath: string, platform = process.platform): 
   }
   const resolved = isExplicitCliPath(cliPath)
     ? (explicitCliCandidates(cliPath, platform).find(c => fs.existsSync(c)) ?? cliPath)
-    : cliPath;
-  const { command, args } = resolveSpawnForPlatform(resolved, ["--version"], platform);
-  const output = execFileSync(command, args, {
+    : preferWindowsExecutable(cliPath, platform);
+  const { command, args, windowsVerbatimArguments } = resolveSpawnForPlatform(
+    resolved,
+    ["--version"],
+    platform
+  );
+  const result = spawnSync(command, args, {
     encoding: "utf8",
     timeout: 10_000,
-    stdio: ["ignore", "pipe", "pipe"]
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsVerbatimArguments
   });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(result.stderr.trim() || `claude --version exited with code ${result.status}`);
+  }
+  const output = result.stdout;
   const match = output.match(/(\d+)\.(\d+)\.(\d+)/);
   if (!match) {
     throw new Error(`Could not parse claude CLI version from output: ${output.trim()}`);
