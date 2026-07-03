@@ -252,7 +252,7 @@ async function fetchAnthropicMessages(
         "anthropic-version": ANTHROPIC_VERSION,
         "anthropic-beta": ANTHROPIC_BETA,
         "anthropic-dangerous-direct-browser-access": "true",
-        "User-Agent": "claude-cli/2.1.146 (external, cli)",
+        "User-Agent": "claude-cli/2.1.199 (external, cli)",
         "x-app": "cli",
         "x-stainless-arch": normalizeStainlessArch(process.arch),
         "x-stainless-lang": "js",

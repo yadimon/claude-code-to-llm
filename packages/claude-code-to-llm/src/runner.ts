@@ -151,7 +151,8 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
   const child: ChildProcessWithoutNullStreams = spawn(spawnConfig.command, spawnConfig.args, {
     cwd: workspace,
     env: buildClaudeEnv(claudeHome, maxTokens),
-    windowsHide: true
+    windowsHide: true,
+    windowsVerbatimArguments: spawnConfig.windowsVerbatimArguments
   });
   const timeoutHandle = setTimeout(() => {
     if (!settled) {

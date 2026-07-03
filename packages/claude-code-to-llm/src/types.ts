@@ -73,4 +73,5 @@ export interface Runner {
 export interface SpawnResolution {
   command: string;
   args: string[];
+  windowsVerbatimArguments?: boolean;
 }
