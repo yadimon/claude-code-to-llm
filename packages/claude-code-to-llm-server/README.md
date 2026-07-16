@@ -67,6 +67,28 @@ curl http://127.0.0.1:3000/v1/responses \
   }'
 ```
 
+Vision request using the OpenAI Responses `input_image` shape:
+
+```bash
+curl http://127.0.0.1:3000/v1/responses \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet-4-6",
+    "input": [{
+      "role": "user",
+      "content": [
+        {"type": "input_image", "image_url": "https://example.com/photo.jpg"},
+        {"type": "input_text", "text": "Describe this image."}
+      ]
+    }]
+  }'
+```
+
+`image_url` may be an HTTPS URL or a `data:image/...;base64,...` URL. JPEG, PNG, GIF, and WebP
+are supported. `file_id` and local server paths are rejected; local files should be encoded as a
+data URL by the client. The optional OpenAI `detail` value is validated but currently has no
+separate Claude equivalent.
+
 Local development commands:
 
 ```bash
@@ -132,10 +154,14 @@ curl http://127.0.0.1:3000/v1/responses \
 - `POST /v1/responses` validates requested models against `CLAUDE_CODE_TO_LLM_SERVER_MODELS`.
 - `max_output_tokens` and `reasoning.effort` are forwarded to the core runner.
 - The default `claude-cli` backend uses the core package's clean minimal runner: safe mode, no Chrome, no session persistence, no slash commands, no tools unless web search is explicitly enabled, strict empty MCP config, disabled auto-memory/history/checkpointing, and marketplace/telemetry/updater traffic disabled.
-- Unsupported request fields such as `tools`, `tool_choice`, or `input_image` return `400`.
+- Unsupported top-level request fields such as `tools`, `tool_choice`, or `input_image` return
+  `400`. Nested `input_image` content blocks use the standard OpenAI Responses shape and are
+  supported.
 - The server is a thin pass-through. Request -> runner mapping:
   - `input: "say hi"` -> prompt sent verbatim (no wrapper headers, no preamble).
   - `input: [{role, content}, ...]` -> joined with minimal `Role: content` prefixes per turn.
+  - nested `{type: "input_image", image_url: "..."}` blocks -> forwarded as Claude image content
+    blocks for both synchronous and streaming requests.
   - `instructions: "..."` -> forwarded as `--system-prompt` in `claude-cli` mode or Anthropic `system` in `claude-oauth` mode. Omit for the smallest possible call.
   - `web_search: true` (proprietary extension) -> enables Claude Code's WebSearch tool for the request in `claude-cli` mode. Direct mode does not expose tools.
 - `--search` / `webSearch: true` at the server level is a process-wide default override; the per-request `web_search` field wins. Web-search usage is captured by the core runner but not surfaced in the OpenAI `usage` block.

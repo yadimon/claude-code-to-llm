@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createEmptyUsage } from "./parse.js";
+import { createMultimodalContent } from "./images.js";
 import { DEFAULT_MODEL } from "./types.js";
 import type { CoreResponse, RunOptions, Runner, StreamEvent, UsageSummary } from "./types.js";
 
@@ -121,7 +122,7 @@ export async function* streamDirectApiPrompt(
   prompt: string,
   options: DirectApiRunOptions = {}
 ): AsyncIterable<StreamEvent> {
-  assertPrompt(prompt);
+  assertPrompt(prompt, options.images);
   const fallbackResponseId = options.responseId || `resp_${randomUUID().replace(/-/g, "")}`;
   const createdAt = Math.floor(Date.now() / 1000);
   const fallbackModel = resolveModel(options);
@@ -226,16 +227,19 @@ async function fetchAnthropicMessages(
   options: DirectApiRunOptions,
   stream: boolean
 ): Promise<Response> {
-  assertPrompt(prompt);
+  assertPrompt(prompt, options.images);
   if (options.webSearch === true) {
     throw new Error("webSearch is not supported by direct API call mode");
   }
 
   const accessToken = loadClaudeOAuthAccessToken(options.credentialsPath);
+  const content = options.images?.length
+    ? createMultimodalContent(prompt, options.images, { baseDir: options.cwd || process.cwd() })
+    : prompt;
   const body = {
     model: resolveModel(options),
     system: buildSystemBlocks(options.systemPrompt),
-    messages: [{ role: "user", content: prompt }],
+    messages: [{ role: "user", content }],
     max_tokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
     stream
   };
@@ -252,7 +256,7 @@ async function fetchAnthropicMessages(
         "anthropic-version": ANTHROPIC_VERSION,
         "anthropic-beta": ANTHROPIC_BETA,
         "anthropic-dangerous-direct-browser-access": "true",
-        "User-Agent": "claude-cli/2.1.199 (external, cli)",
+        "User-Agent": "claude-cli/2.1.211 (external, cli)",
         "x-app": "cli",
         "x-stainless-arch": normalizeStainlessArch(process.arch),
         "x-stainless-lang": "js",
@@ -498,11 +502,11 @@ function parseSseEvent(rawEvent: string): SseEvent | undefined {
   };
 }
 
-function assertPrompt(prompt: string): void {
+function assertPrompt(prompt: string, images: RunOptions["images"]): void {
   if (typeof prompt !== "string") {
     throw new Error("Prompt must be a string");
   }
-  if (!prompt.trim()) {
+  if (!prompt.trim() && (!Array.isArray(images) || images.length === 0)) {
     throw new Error("Prompt must not be empty");
   }
 }

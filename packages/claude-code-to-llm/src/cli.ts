@@ -5,15 +5,17 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createCliArgReader,
+  normalizeImageUrl,
+  parseImageDataUrl,
   runDirectApiPrompt,
   runPrompt,
   streamDirectApiPrompt,
   streamPrompt
 } from "./index.js";
-import type { RunOptions } from "./types.js";
+import type { ImageInput, RunOptions } from "./types.js";
 
 const args = process.argv.slice(2);
-const { getArg, hasFlag } = createCliArgReader(args);
+const { getArg, getArgs, hasFlag } = createCliArgReader(args);
 export const HELP_TEXT = `claude-code-to-llm
 
 Usage:
@@ -24,6 +26,7 @@ Usage:
 Options:
   --prompt <text>
   --input-file <path>
+  --image <path|url|data-url> (repeatable)
   --stream
   --json
   --verbose
@@ -84,7 +87,24 @@ function buildRunOptions(): RunOptions {
     settingsPath: getArg("--settings-path"),
     configHome: getArg("--config-home"),
     cwd: getArg("--cwd"),
-    cliPath: getArg("--cli")
+    cliPath: getArg("--cli"),
+    images: getArgs("--image").map(normalizeCliImage)
+  };
+}
+
+export function normalizeCliImage(value: string): ImageInput {
+  if (value.trim().toLowerCase().startsWith("data:")) {
+    return parseImageDataUrl(value, "--image");
+  }
+  if (/^https?:\/\//i.test(value)) {
+    return {
+      type: "url",
+      url: normalizeImageUrl(value, "--image")
+    };
+  }
+  return {
+    type: "file",
+    path: value
   };
 }
 

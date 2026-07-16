@@ -13,6 +13,7 @@ import { assertClaudeVersion, assertCliPathExists, normalizeSpawnError } from ".
 import { AsyncQueue } from "./queue.js";
 import { resolveSpawn } from "./spawn.js";
 import { createClaudeCodeHome, createWorkspace, cleanupDirectory } from "./workspace.js";
+import { createMultimodalContent } from "./images.js";
 import { DEFAULT_MODEL, DEFAULT_REASONING_EFFORT } from "./types.js";
 import type {
   CoreResponse,
@@ -57,7 +58,7 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
     throw new Error("Prompt must be a string");
   }
 
-  if (!prompt.trim()) {
+  if (!prompt.trim() && (!Array.isArray(options.images) || options.images.length === 0)) {
     throw new Error("Prompt must not be empty");
   }
 
@@ -69,8 +70,12 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
     timeoutMs,
     cliPath,
     webSearch,
-    systemPrompt
+    systemPrompt,
+    images
   } = normalizedOptions;
+  const multimodalContent = images.length
+    ? createMultimodalContent(prompt, images, { baseDir: options.cwd || process.cwd() })
+    : undefined;
   assertCliPathExists(cliPath);
   assertClaudeVersion(cliPath);
   const ownsWorkspace = !options.cwd;
@@ -136,6 +141,9 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
     "--system-prompt",
     systemPrompt ?? ""
   ];
+  if (multimodalContent) {
+    cliArgs.push("--input-format", "stream-json");
+  }
 
   queue.push({
     type: "response.started",
@@ -238,6 +246,10 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
 
     if (isAssistantMessageEvent(event)) {
       const messageText = getAssistantMessageText(event);
+      if (typeof event.error === "string" && event.error) {
+        finalizeFailure(new Error(messageText || `Claude Code request failed: ${event.error}`));
+        return;
+      }
       if (messageText) {
         content = content ? `${content}\n\n${messageText}` : messageText;
         queue.push({
@@ -298,7 +310,18 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
   });
 
   try {
-    child.stdin.end(prompt);
+    child.stdin.end(
+      multimodalContent
+        ? `${JSON.stringify({
+            type: "user",
+            message: {
+              role: "user",
+              content: multimodalContent
+            },
+            parent_tool_use_id: null
+          })}\n`
+        : prompt
+    );
   } catch (error) {
     finalizeFailure(error instanceof Error ? error : new Error(String(error)));
   }
@@ -348,8 +371,19 @@ export function normalizeRunOptions(options: RunOptions = {}): NormalizedRunOpti
     timeoutMs: normalizeTimeout(options.timeout),
     cliPath: normalizeCliPath(options.cliPath),
     webSearch: options.webSearch === true,
-    systemPrompt: typeof options.systemPrompt === "string" ? options.systemPrompt : undefined
+    systemPrompt: typeof options.systemPrompt === "string" ? options.systemPrompt : undefined,
+    images: normalizeImagesOption(options.images)
   };
+}
+
+function normalizeImagesOption(images: RunOptions["images"]): NonNullable<RunOptions["images"]> {
+  if (images == null) {
+    return [];
+  }
+  if (!Array.isArray(images)) {
+    throw new Error("Invalid images: expected an array");
+  }
+  return images;
 }
 
 function normalizeCliPath(value: string | undefined): string {

@@ -24,6 +24,11 @@ const workspaceTestScript = fs.readFileSync(
   path.join(repoRoot, "scripts", "run-workspace-tests.ts"),
   "utf8"
 );
+const nodeTestRunners = [
+  path.join(repoRoot, "scripts", "run-root-node-tests.ts"),
+  path.join(repoRoot, "packages", "claude-code-to-llm", "scripts", "run-node-tests.ts"),
+  path.join(repoRoot, "packages", "claude-code-to-llm-server", "scripts", "run-node-tests.ts")
+].map(file => fs.readFileSync(file, "utf8"));
 const healthCheck = fs.readFileSync(path.join(repoRoot, "health-check.md"), "utf8");
 const lockfile = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "package-lock.json"), "utf8")
@@ -56,6 +61,15 @@ test("workspace test runner covers both published workspaces and both e2e paths"
   assert.match(workspaceTestScript, /@yadimon\/claude-code-to-llm-server/);
   assert.match(workspaceTestScript, /run", "test"/);
   assert.match(workspaceTestScript, /run", "e2e"/);
+});
+
+test("node test runners propagate failures through their process exit code", () => {
+  for (const runner of nodeTestRunners) {
+    assert.match(runner, /stream\.on\("data"/);
+    assert.match(runner, /event\.type === "test:fail"/);
+    assert.match(runner, /stream\.on\("end"/);
+    assert.match(runner, /process\.exitCode = failed \? 1 : 0/);
+  }
 });
 
 test("CI workflow verifies supported node versions and Docker flow", () => {

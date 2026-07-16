@@ -5,6 +5,9 @@ Monorepo for two npm packages built around the Claude Code CLI:
 - `@yadimon/claude-code-to-llm`: raw prompt SDK and CLI around `claude -p`
 - `@yadimon/claude-code-to-llm-server`: OpenAI-compatible `/v1/responses` server on top of the core package
 
+Both packages support Claude vision inputs. The core accepts local files, image URLs, and base64
+data; the server accepts OpenAI Responses-compatible nested `input_image` blocks.
+
 The npm-facing docs live in:
 
 - [`packages/claude-code-to-llm/README.md`](./packages/claude-code-to-llm/README.md)
@@ -38,6 +41,7 @@ Useful local commands:
 ```bash
 npm run smoke:core
 npm run smoke:server
+npm run smoke:vision
 npm run start:server
 npm run start:server:mock
 ```

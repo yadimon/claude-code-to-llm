@@ -1,4 +1,5 @@
 export * from "./types.js";
+export * from "./images.js";
 export * from "./cli-args.js";
 export * from "./spawn.js";
 export * from "./queue.js";

@@ -30,6 +30,7 @@ claude auth status
 - a small SDK for raw prompt execution with minimal prompt overhead
 - a CLI for direct prompt mode from flags, files, or stdin
 - structured streaming events for adapters such as HTTP compatibility servers
+- multimodal vision input from local image files, HTTPS URLs, or base64 image data
 - isolated execution via a temporary home directory copied from your Claude Code auth bundle
 - an explicit `--direct-api-call` escape hatch that bypasses the Claude Code CLI process after risk confirmation
 
@@ -46,6 +47,35 @@ const result = await runPrompt("Hello", {
 console.log(result.content);
 console.log(result.usage);
 ```
+
+### Vision
+
+Pass one or more images through `RunOptions.images`. Images are sent as real multimodal content
+blocks; the runner does not enable Claude Code's file tools.
+
+```ts
+import { readFile } from "node:fs/promises";
+import { runPrompt } from "@yadimon/claude-code-to-llm";
+
+const result = await runPrompt("What is shown in these images?", {
+  images: [
+    { type: "file", path: "./screenshot.png" },
+    { type: "url", url: "https://example.com/photo.webp" },
+    {
+      type: "base64",
+      mediaType: "image/jpeg",
+      data: await readFile("./photo.jpg", "base64")
+    }
+  ]
+});
+
+console.log(result.content);
+```
+
+Supported formats are JPEG, PNG, GIF, and WebP. Local paths are resolved against `cwd` when it
+is set, otherwise against the caller's current working directory. URL inputs must use HTTPS.
+Each base64-encoded image is limited to 10 MB, all embedded images together to 20 MB, and
+each request to 100 images. URL payload sizes remain subject to Anthropic's upstream limits.
 
 For streamed events:
 
@@ -66,6 +96,8 @@ for await (const event of streamPrompt("Hello", {
 ```bash
 claude-code-to-llm --prompt "Hello"
 claude-code-to-llm --input-file ./prompt.txt --json
+claude-code-to-llm --prompt "Describe this image" --image ./screenshot.png
+claude-code-to-llm --prompt "Compare these" --image ./one.png --image https://example.com/two.jpg
 cat ./prompt.txt | claude-code-to-llm --stream --json
 ```
 
@@ -74,6 +106,7 @@ Supported CLI options:
 ```text
 --prompt <text>
 --input-file <path>
+--image <path|url|data-url> (repeatable)
 --stream
 --json
 --model <name>
@@ -110,10 +143,13 @@ Supported CLI options:
 ## Notes
 
 - The wrapper calls `claude --print --output-format stream-json`.
+- Requests with images additionally use Claude Code's `--input-format stream-json` protocol.
 - `maxTokens` maps to `CLAUDE_CODE_MAX_OUTPUT_TOKENS` for the spawned Claude Code process.
 - The package is intentionally focused on raw prompt execution. It does not expose Claude Code tools through its public API.
 - Web search is off by default. Enable per-call with `webSearch: true` (SDK) or `--search` (CLI).
 - Requires Claude Code CLI `>= 2.1.179`. The runner detects the version on first call and fails with an upgrade hint if it's older — install or refresh via `npm i -g @anthropic-ai/claude-code@latest`.
+- Vision is release-tested with Claude Code CLI `2.1.211` and the isolated temporary home. Keeping
+  the isolated home is important because user hooks or plugins can otherwise alter image inputs.
 
 ## Direct API Call Mode
 

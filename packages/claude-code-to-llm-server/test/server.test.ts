@@ -4,6 +4,7 @@ import { createEmptyUsage } from "@yadimon/claude-code-to-llm";
 import type { RunOptions, StreamEvent } from "@yadimon/claude-code-to-llm";
 import {
   buildOpenAIResponse,
+  isFetchSafePort,
   startServer
 } from "../src/index.js";
 
@@ -90,6 +91,12 @@ test("buildOpenAIResponse maps core results into response objects", () => {
   assert.equal(response.object, "response");
   assert.equal(response.output_text, "hello world");
   assert.equal(response.usage.total_tokens, 14);
+});
+
+test("dynamic server ports avoid ports blocked by fetch", () => {
+  assert.equal(isFetchSafePort(6000), false);
+  assert.equal(isFetchSafePort(6667), false);
+  assert.equal(isFetchSafePort(3000), true);
 });
 
 test("server exposes health, models, and sync responses", async () => {
@@ -246,6 +253,155 @@ test("server forwards max_output_tokens and reasoning effort to the runner", asy
     assert.equal(calls[0].options.systemPrompt, "Be concise.");
     // Single-string input is forwarded verbatim — no wrapper headers.
     assert.equal(calls[0].prompt, "Hello");
+  } finally {
+    await started.close();
+  }
+});
+
+test("server forwards OpenAI input_image data URLs to the runner", async () => {
+  const calls: Array<{ prompt: string; options: RunOptions }> = [];
+  const imageData =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYPgPAAEDAQAIicLsAAAAAElFTkSuQmCC";
+  const started = await startServer({
+    host: "127.0.0.1",
+    port: 0,
+    runner: createStubRunner(calls)
+  });
+
+  try {
+    const response = await fetch(`${started.url}/v1/responses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        input: [
+          {
+            role: "user",
+            content: [
+              { type: "input_image", image_url: `data:image/png;base64,${imageData}` },
+              { type: "input_text", text: "What color is this?" }
+            ]
+          }
+        ]
+      })
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].prompt, "What color is this?");
+    assert.deepEqual(calls[0].options.images, [
+      { type: "base64", mediaType: "image/png", data: imageData }
+    ]);
+  } finally {
+    await started.close();
+  }
+});
+
+test("server streams image URL requests and forwards the image", async () => {
+  const calls: Array<{ prompt: string; options: RunOptions }> = [];
+  const started = await startServer({
+    host: "127.0.0.1",
+    port: 0,
+    runner: createStubRunner(calls)
+  });
+
+  try {
+    const response = await fetch(`${started.url}/v1/responses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stream: true,
+        input: [
+          {
+            role: "user",
+            content: [
+              { type: "input_text", text: "Describe this image." },
+              {
+                type: "input_image",
+                image_url: "https://example.com/image.png",
+                detail: "high"
+              }
+            ]
+          }
+        ]
+      })
+    });
+    const text = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(text, /event: response.completed/);
+    assert.deepEqual(calls[0].options.images, [
+      { type: "url", url: "https://example.com/image.png" }
+    ]);
+  } finally {
+    await started.close();
+  }
+});
+
+test("server rejects unsafe or malformed input_image blocks", async () => {
+  const imageData =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYPgPAAEDAQAIicLsAAAAAElFTkSuQmCC";
+  const started = await startServer({
+    host: "127.0.0.1",
+    port: 0,
+    runner: createStubRunner()
+  });
+
+  async function send(content: unknown, role = "user") {
+    return fetch(`${started.url}/v1/responses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ input: [{ role, content }] })
+    });
+  }
+
+  try {
+    const fileId = await send([
+      { type: "input_image", file_id: "file_123" },
+      { type: "input_text", text: "describe" }
+    ]);
+    assert.equal(fileId.status, 400);
+    assert.match(await fileId.text(), /file_id is not supported/);
+
+    const fileUrl = await send([
+      { type: "input_image", image_url: "file:///secret.png" },
+      { type: "input_text", text: "describe" }
+    ]);
+    assert.equal(fileUrl.status, 400);
+    assert.match(await fileUrl.text(), /must use https/);
+
+    const insecureUrl = await send([
+      { type: "input_image", image_url: "http://example.com/image.png" },
+      { type: "input_text", text: "describe" }
+    ]);
+    assert.equal(insecureUrl.status, 400);
+    assert.match(await insecureUrl.text(), /must use https/);
+
+    const mismatch = await send([
+      { type: "input_image", image_url: `data:image/jpeg;base64,${imageData}` },
+      { type: "input_text", text: "describe" }
+    ]);
+    assert.equal(mismatch.status, 400);
+    assert.match(await mismatch.text(), /media type mismatch/);
+
+    const assistantImage = await send(
+      [
+        { type: "input_image", image_url: "https://example.com/image.png" },
+        { type: "input_text", text: "describe" }
+      ],
+      "assistant"
+    );
+    assert.equal(assistantImage.status, 400);
+    assert.match(await assistantImage.text(), /only supported in user messages/);
+
+    const tooMany = await send([
+      ...Array.from({ length: 101 }, () => ({
+        type: "input_image",
+        image_url: "https://example.com/image.png"
+      })),
+      { type: "input_text", text: "describe" }
+    ]);
+    assert.equal(tooMany.status, 400);
+    assert.match(await tooMany.text(), /Too many images/);
   } finally {
     await started.close();
   }
@@ -498,7 +654,7 @@ test("server rejects oversized request bodies", async () => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        input: "x".repeat(10 * 1024 * 1024 + 1)
+        input: "x".repeat(32 * 1024 * 1024)
       })
     });
 
@@ -519,4 +675,3 @@ test("startServer rejects invalid configured ports before listen", async () => {
     /Invalid server port/
   );
 });
-

@@ -4,13 +4,29 @@ import {
   DEFAULT_MODEL,
   createDirectApiRunner,
   createEmptyUsage,
+  normalizeImageInputs,
+  normalizeImageUrl,
+  parseImageDataUrl,
   runPrompt as defaultRunPrompt,
   streamPrompt as defaultStreamPrompt
 } from "@yadimon/claude-code-to-llm";
-import type { CoreResponse, RunOptions, StreamEvent } from "@yadimon/claude-code-to-llm";
+import type {
+  CoreResponse,
+  ImageInput,
+  RunOptions,
+  StreamEvent
+} from "@yadimon/claude-code-to-llm";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 3000;
+const MAX_DYNAMIC_PORT_ATTEMPTS = 10;
+const FETCH_BLOCKED_PORTS = new Set([
+  1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79, 87, 95,
+  101, 102, 103, 104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137, 139, 143, 161,
+  179, 389, 427, 465, 512, 513, 514, 515, 526, 530, 531, 532, 540, 548, 554, 556, 563,
+  587, 601, 636, 989, 990, 993, 995, 1719, 1720, 1723, 2049, 3659, 4045, 5060, 5061,
+  6000, 6566, 6665, 6666, 6667, 6668, 6669, 6697, 10080
+]);
 type ServerBackend = "claude-cli" | "claude-oauth";
 const UNSUPPORTED_REQUEST_FIELDS = [
   "tools",
@@ -70,9 +86,15 @@ type MessageTextBlock = {
   type: "text" | "input_text" | "output_text";
   text: string;
 };
+type MessageImageBlock = {
+  type: "input_image";
+  image_url?: string;
+  file_id?: string;
+  detail?: "auto" | "low" | "high";
+};
 type ConversationMessageInput = {
   role?: MessageRole;
-  content: string | MessageTextBlock[];
+  content: string | Array<MessageTextBlock | MessageImageBlock>;
 };
 type ResponsesInput =
   | string
@@ -152,17 +174,21 @@ export function createServer(options: ServerOptions = {}) {
 
 export async function startServer(options: ServerOptions = {}) {
   const { server, host, port } = createServer(options);
+  let resolvedPort = port;
 
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(port, host, () => {
-      server.off("error", reject);
-      resolve();
-    });
-  });
+  for (let attempt = 1; attempt <= MAX_DYNAMIC_PORT_ATTEMPTS; attempt += 1) {
+    await listenServer(server, port, host);
+    const address = server.address();
+    resolvedPort = typeof address === "object" && address ? address.port : port;
+    if (port !== 0 || isFetchSafePort(resolvedPort)) {
+      break;
+    }
+    await closeHttpServer(server);
+    if (attempt === MAX_DYNAMIC_PORT_ATTEMPTS) {
+      throw new Error("Unable to allocate a fetch-safe dynamic server port");
+    }
+  }
 
-  const address = server.address();
-  const resolvedPort = typeof address === "object" && address ? address.port : port;
   const url = `http://${host}:${resolvedPort}`;
 
   return {
@@ -171,18 +197,39 @@ export async function startServer(options: ServerOptions = {}) {
     url,
     server,
     close() {
-      return new Promise<void>((resolve, reject) => {
-        server.close(error => {
-          if (error) {
-            reject(error);
-            return;
-          }
-
-          resolve();
-        });
-      });
+      return closeHttpServer(server);
     }
   };
+}
+
+export function isFetchSafePort(port: number): boolean {
+  return !FETCH_BLOCKED_PORTS.has(port);
+}
+
+function listenServer(
+  server: ReturnType<typeof createHttpServer>,
+  port: number,
+  host: string
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+}
+
+function closeHttpServer(server: ReturnType<typeof createHttpServer>): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    server.close(error => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
 }
 
 export function buildOpenAIResponse(result: CoreResponse) {
@@ -471,7 +518,8 @@ function requestToRunOptions(body: ResponsesRequestBody, options: ServerOptions)
       DEFAULT_MODEL,
     maxTokens: body.max_output_tokens ?? undefined,
     reasoningEffort: body.reasoning?.effort ?? undefined,
-    systemPrompt: body.instructions && body.instructions.trim() ? body.instructions : undefined
+    systemPrompt: body.instructions && body.instructions.trim() ? body.instructions : undefined,
+    images: collectRequestImages(body.input)
   };
   // Only override the server-level webSearch default when the request
   // explicitly provides it — otherwise let the operator's default flow.
@@ -570,7 +618,7 @@ async function streamOpenAIResponse(
 
 async function readJsonBody(request: IncomingMessage): Promise<ResponsesRequestBody> {
   const chunks: Buffer[] = [];
-  const maxBodySize = 10 * 1024 * 1024;
+  const maxBodySize = 32 * 1024 * 1024;
   let totalSize = 0;
 
   for await (const chunk of request) {
@@ -755,7 +803,10 @@ function normalizeMessage(
   };
 }
 
-function normalizeMessageContent(content: string | MessageTextBlock[], label: string): string {
+function normalizeMessageContent(
+  content: string | Array<MessageTextBlock | MessageImageBlock>,
+  label: string
+): string {
   if (typeof content === "string") {
     return normalizeText(content, label);
   }
@@ -764,19 +815,97 @@ function normalizeMessageContent(content: string | MessageTextBlock[], label: st
     throw createHttpError(400, `${label} must be a string or text block array`);
   }
 
-  const blocks = content.map((block, index) => {
+  const blocks = content.flatMap((block, index) => {
     if (!block || typeof block !== "object") {
       throw createHttpError(400, `${label} block ${index} must be an object`);
     }
 
+    if (block.type === "input_image") {
+      return [];
+    }
     if (!TEXT_BLOCK_TYPES.has(block.type) || typeof block.text !== "string") {
-      throw createHttpError(400, `${label} block ${index} must be a supported text block`);
+      throw createHttpError(400, `${label} block ${index} must be a supported content block`);
     }
 
-    return normalizeText(block.text, `${label} block ${index}`);
+    return [normalizeText(block.text, `${label} block ${index}`)];
   });
 
   return blocks.join("\n\n");
+}
+
+function collectRequestImages(input: ResponsesInput | undefined): ImageInput[] {
+  const images: ImageInput[] = [];
+
+  function collectMessages(
+    entries: ConversationMessageInput[],
+    defaultRole?: MessageRole
+  ): void {
+    entries.forEach((entry, messageIndex) => {
+      if (!entry || typeof entry !== "object" || !Array.isArray(entry.content)) {
+        return;
+      }
+      const role = entry.role || defaultRole;
+      entry.content.forEach((block, blockIndex) => {
+        if (!block || typeof block !== "object" || block.type !== "input_image") {
+          return;
+        }
+        if (role !== "user") {
+          throw createHttpError(
+            400,
+            `input_image is only supported in user messages (message ${messageIndex}, block ${blockIndex})`
+          );
+        }
+        images.push(normalizeInputImageBlock(block, messageIndex, blockIndex));
+      });
+    });
+  }
+
+  if (Array.isArray(input)) {
+    collectMessages(input, "user");
+  } else if (input && typeof input === "object") {
+    if (Array.isArray(input.messages)) {
+      collectMessages(input.messages);
+    }
+    if (Array.isArray(input.input)) {
+      collectMessages(input.input, "user");
+    }
+  }
+
+  try {
+    normalizeImageInputs(images);
+  } catch (error) {
+    throw createHttpError(400, error instanceof Error ? error.message : String(error));
+  }
+  return images;
+}
+
+function normalizeInputImageBlock(
+  block: MessageImageBlock,
+  messageIndex: number,
+  blockIndex: number
+): ImageInput {
+  const label = `input_image at message ${messageIndex}, block ${blockIndex}`;
+  if (block.file_id != null) {
+    throw createHttpError(400, `${label} file_id is not supported`);
+  }
+  if (block.detail != null && !["auto", "low", "high"].includes(block.detail)) {
+    throw createHttpError(400, `${label} detail must be auto, low, or high`);
+  }
+  if (typeof block.image_url !== "string" || !block.image_url.trim()) {
+    throw createHttpError(400, `${label} image_url must be a non-empty string`);
+  }
+
+  try {
+    if (block.image_url.trim().toLowerCase().startsWith("data:")) {
+      return parseImageDataUrl(block.image_url, `${label} image_url`);
+    }
+    return {
+      type: "url",
+      url: normalizeImageUrl(block.image_url, `${label} image_url`)
+    };
+  } catch (error) {
+    throw createHttpError(400, error instanceof Error ? error.message : String(error));
+  }
 }
 
 function normalizeText(value: string, label: string): string {

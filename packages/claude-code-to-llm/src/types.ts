@@ -1,6 +1,24 @@
 export const DEFAULT_MODEL = "claude-sonnet-4-6";
 export const DEFAULT_REASONING_EFFORT = "low";
 
+export type ImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+
+export type ImageInput =
+  | {
+      type: "base64";
+      mediaType: ImageMediaType;
+      data: string;
+    }
+  | {
+      type: "url";
+      url: string;
+    }
+  | {
+      type: "file";
+      path: string;
+      mediaType?: ImageMediaType;
+    };
+
 export interface RunOptions {
   model?: string;
   reasoningEffort?: string;
@@ -15,6 +33,7 @@ export interface RunOptions {
   responseId?: string;
   webSearch?: boolean;
   systemPrompt?: string;
+  images?: ImageInput[];
 }
 
 export interface NormalizedRunOptions {
@@ -25,6 +44,7 @@ export interface NormalizedRunOptions {
   cliPath: string;
   webSearch: boolean;
   systemPrompt?: string;
+  images: ImageInput[];
 }
 
 export interface UsageSummary {

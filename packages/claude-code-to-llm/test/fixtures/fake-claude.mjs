@@ -36,6 +36,24 @@ if (process.env.FAKE_CLAUDE_TERMINATE_SIGNAL) {
   process.kill(process.pid, process.env.FAKE_CLAUDE_TERMINATE_SIGNAL);
 }
 
+if (process.env.FAKE_CLAUDE_IMAGE_ERROR) {
+  process.stdout.write(
+    `${JSON.stringify({
+      type: "assistant",
+      error: "invalid_request",
+      message: {
+        content: [
+          {
+            type: "text",
+            text: "API Error: an image in the conversation could not be processed and was removed."
+          }
+        ]
+      }
+    })}\n`
+  );
+  process.exit(0);
+}
+
 const prompt = stdin.trim();
 const modelIndex = args.findIndex(arg => arg === "--model");
 const model = modelIndex === -1 ? "claude-sonnet-4-6" : args[modelIndex + 1];

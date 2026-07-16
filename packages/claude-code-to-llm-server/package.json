@@ -40,6 +40,7 @@
     "publish:dry-run": "npm publish --dry-run",
     "release:check": "tsx ./scripts/release-check.ts",
     "smoke": "tsx ./scripts/smoke-server.ts",
+    "smoke:vision": "tsx ./scripts/smoke-vision.ts",
     "start": "tsx ./src/cli.ts",
     "start:mock": "tsx ./scripts/start-mock-server.ts",
     "test:docker": "tsx ./scripts/docker-e2e.ts",

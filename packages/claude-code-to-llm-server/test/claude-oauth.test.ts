@@ -15,6 +15,10 @@ type CapturedRequest = {
   body: unknown;
 };
 
+const FETCH_BLOCKED_DYNAMIC_PORTS = new Set([
+  6000, 6566, 6665, 6666, 6667, 6668, 6669, 6697, 10080
+]);
+
 async function startFakeAnthropic(handler: (request: CapturedRequest, response: ServerResponse) => void) {
   const requests: CapturedRequest[] = [];
   const server = createHttpServer(async (request, response) => {
@@ -34,18 +38,27 @@ async function startFakeAnthropic(handler: (request: CapturedRequest, response: 
     handler(captured, response);
   });
 
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      server.off("error", reject);
-      resolve();
+  let port = 0;
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => {
+        server.off("error", reject);
+        resolve();
+      });
     });
-  });
-
-  const address = server.address();
-  assert.equal(typeof address, "object");
-  assert.ok(address);
-  const port = (address as AddressInfo).port;
+    const address = server.address();
+    assert.equal(typeof address, "object");
+    assert.ok(address);
+    port = (address as AddressInfo).port;
+    if (!FETCH_BLOCKED_DYNAMIC_PORTS.has(port)) {
+      break;
+    }
+    await new Promise<void>((resolve, reject) =>
+      server.close(error => (error ? reject(error) : resolve()))
+    );
+  }
+  assert.ok(port && !FETCH_BLOCKED_DYNAMIC_PORTS.has(port));
 
   return {
     url: `http://127.0.0.1:${port}`,

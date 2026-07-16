@@ -7,6 +7,7 @@ type TextBlock = {
 
 type AssistantMessageEvent = {
   type: "assistant";
+  error?: string;
   message?: {
     content?: TextBlock[];
   };

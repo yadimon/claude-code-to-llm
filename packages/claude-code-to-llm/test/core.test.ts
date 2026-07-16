@@ -190,6 +190,104 @@ test("runPrompt spawns claude in minimal mode and forwards web search opt-in", a
   }
 });
 
+test("runPrompt sends image inputs as a stream-json user message", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "claude-code-to-llm-vision-"));
+  const { sessionPath, credentialsPath } = writeAuthBundle(tempDir);
+  const capturePath = path.join(tempDir, "capture.json");
+  const fixturePath = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "./fixtures/fake-claude.mjs"
+  );
+  const cliPath =
+    process.platform === "win32" ? path.join(tempDir, "fake-claude.cmd") : fixturePath;
+  if (process.platform === "win32") {
+    fs.writeFileSync(cliPath, `@echo off\r\n"${process.execPath}" "${fixturePath}" %*\r\n`, "utf8");
+  }
+
+  const previousCapture = process.env.FAKE_CLAUDE_CAPTURE_FILE;
+  process.env.FAKE_CLAUDE_CAPTURE_FILE = capturePath;
+  const imageData =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYPgPAAEDAQAIicLsAAAAAElFTkSuQmCC";
+
+  try {
+    await runPrompt("What color is this?", {
+      authPath: sessionPath,
+      credentialsPath,
+      cliPath,
+      timeout: 5000,
+      images: [{ type: "base64", mediaType: "image/png", data: imageData }]
+    });
+    const capture = JSON.parse(fs.readFileSync(capturePath, "utf8")) as {
+      args: string[];
+      stdin: string;
+    };
+    const inputFormatIndex = capture.args.indexOf("--input-format");
+    assert.notEqual(inputFormatIndex, -1);
+    assert.equal(capture.args[inputFormatIndex + 1], "stream-json");
+    assert.ok(!capture.args.includes(imageData));
+
+    const message = JSON.parse(capture.stdin.trim()) as {
+      type: string;
+      message: { role: string; content: Array<Record<string, unknown>> };
+      parent_tool_use_id: null;
+    };
+    assert.equal(message.type, "user");
+    assert.equal(message.message.role, "user");
+    assert.equal(message.parent_tool_use_id, null);
+    assert.deepEqual(message.message.content, [
+      {
+        type: "image",
+        source: { type: "base64", media_type: "image/png", data: imageData }
+      },
+      { type: "text", text: "What color is this?" }
+    ]);
+  } finally {
+    if (previousCapture == null) {
+      delete process.env.FAKE_CLAUDE_CAPTURE_FILE;
+    } else {
+      process.env.FAKE_CLAUDE_CAPTURE_FILE = previousCapture;
+    }
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("runPrompt fails when Claude Code reports that an image was removed", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "claude-code-to-llm-image-error-"));
+  const { sessionPath, credentialsPath } = writeAuthBundle(tempDir);
+  const fixturePath = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "./fixtures/fake-claude.mjs"
+  );
+  const cliPath =
+    process.platform === "win32" ? path.join(tempDir, "fake-claude.cmd") : fixturePath;
+  if (process.platform === "win32") {
+    fs.writeFileSync(cliPath, `@echo off\r\n"${process.execPath}" "${fixturePath}" %*\r\n`, "utf8");
+  }
+
+  const previousImageError = process.env.FAKE_CLAUDE_IMAGE_ERROR;
+  process.env.FAKE_CLAUDE_IMAGE_ERROR = "1";
+
+  try {
+    await assert.rejects(
+      runPrompt("describe", {
+        authPath: sessionPath,
+        credentialsPath,
+        cliPath,
+        timeout: 5000,
+        images: [{ type: "url", url: "https://example.com/image.png" }]
+      }),
+      /could not be processed and was removed/
+    );
+  } finally {
+    if (previousImageError == null) {
+      delete process.env.FAKE_CLAUDE_IMAGE_ERROR;
+    } else {
+      process.env.FAKE_CLAUDE_IMAGE_ERROR = previousImageError;
+    }
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("runPrompt fails when the Claude Code process exits due to a signal", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "claude-code-to-llm-signal-"));
   const { sessionPath, credentialsPath } = writeAuthBundle(tempDir);

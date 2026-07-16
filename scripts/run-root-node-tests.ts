@@ -18,11 +18,13 @@ const stream = run({
   execArgv: ["--import", "tsx/esm"]
 });
 
-stream.on("test:fail", () => {
-  failed = true;
+stream.on("data", (event: { type?: string }) => {
+  if (event.type === "test:fail") {
+    failed = true;
+  }
 });
 
-stream.on("done", () => {
+stream.on("end", () => {
   process.exitCode = failed ? 1 : 0;
 });
 

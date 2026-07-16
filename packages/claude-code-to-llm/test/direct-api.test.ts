@@ -15,6 +15,10 @@ type CapturedRequest = {
   body: unknown;
 };
 
+const FETCH_BLOCKED_DYNAMIC_PORTS = new Set([
+  6000, 6566, 6665, 6666, 6667, 6668, 6669, 6697, 10080
+]);
+
 async function startFakeAnthropic(handler: (request: CapturedRequest, response: ServerResponse) => void) {
   const requests: CapturedRequest[] = [];
   const server = createHttpServer(async (request, response) => {
@@ -34,18 +38,27 @@ async function startFakeAnthropic(handler: (request: CapturedRequest, response: 
     handler(captured, response);
   });
 
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      server.off("error", reject);
-      resolve();
+  let port = 0;
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => {
+        server.off("error", reject);
+        resolve();
+      });
     });
-  });
-
-  const address = server.address();
-  assert.equal(typeof address, "object");
-  assert.ok(address);
-  const port = (address as AddressInfo).port;
+    const address = server.address();
+    assert.equal(typeof address, "object");
+    assert.ok(address);
+    port = (address as AddressInfo).port;
+    if (!FETCH_BLOCKED_DYNAMIC_PORTS.has(port)) {
+      break;
+    }
+    await new Promise<void>((resolve, reject) =>
+      server.close(error => (error ? reject(error) : resolve()))
+    );
+  }
+  assert.ok(port && !FETCH_BLOCKED_DYNAMIC_PORTS.has(port));
 
   return {
     url: `http://127.0.0.1:${port}`,
@@ -180,6 +193,53 @@ test("runDirectApiPrompt sends the Claude Code identity block even without calle
     });
 
     assert.equal(result.content, "Hi");
+  } finally {
+    await upstream.close();
+  }
+});
+
+test("runDirectApiPrompt maps image inputs to Anthropic content blocks", async () => {
+  const credentialsPath = writeCredentialsFile();
+  const imageData =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYPgPAAEDAQAIicLsAAAAAElFTkSuQmCC";
+  const upstream = await startFakeAnthropic((request, response) => {
+    assert.deepEqual((request.body as { messages: unknown }).messages, [
+      {
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: { type: "base64", media_type: "image/png", data: imageData }
+          },
+          {
+            type: "image",
+            source: { type: "url", url: "https://example.com/blue.png" }
+          },
+          { type: "text", text: "compare" }
+        ]
+      }
+    ]);
+    response.setHeader("Content-Type", "application/json");
+    response.end(
+      JSON.stringify({
+        id: "msg_image",
+        model: "claude-sonnet-4-6",
+        content: [{ type: "text", text: "different" }],
+        usage: { input_tokens: 10, output_tokens: 1 }
+      })
+    );
+  });
+
+  try {
+    const result = await runDirectApiPrompt("compare", {
+      credentialsPath,
+      directApiBaseUrl: upstream.url,
+      images: [
+        { type: "base64", mediaType: "image/png", data: imageData },
+        { type: "url", url: "https://example.com/blue.png" }
+      ]
+    });
+    assert.equal(result.content, "different");
   } finally {
     await upstream.close();
   }
