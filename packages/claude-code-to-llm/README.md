@@ -1,6 +1,11 @@
 # @yadimon/claude-code-to-llm
 
-Minimal SDK and CLI wrapper around Claude Code headless mode for raw prompt requests.
+Run one-shot text and vision prompts through your local Claude Code login with a small Node.js SDK or command-line interface.
+
+The default runner starts `claude --print` in an isolated, minimal environment. It keeps subscription/OAuth authentication, but removes Claude Code's coding-agent context: no file or shell tools, no project instructions, no plugins, no MCP servers, no memory, and no persisted session. This makes it useful for application-owned classification, extraction, translation, evaluation, and image-analysis jobs.
+
+> [!IMPORTANT]
+> This is an independent wrapper, not an official Anthropic SDK. If you need agent tools or durable sessions, use the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). If you need a supported production API with API-key billing, use Anthropic's official SDK. To expose this runner over HTTP, see [`@yadimon/claude-code-to-llm-server`](https://github.com/yadimon/claude-code-to-llm/tree/main/packages/claude-code-to-llm-server).
 
 ## Install
 
@@ -10,98 +15,146 @@ npm install @yadimon/claude-code-to-llm
 
 Requirements:
 
-- Node.js `>=20`
-- installed `claude` CLI in `PATH` or `CLAUDE_CODE_TO_LLM_CLI_PATH` for the default CLI-backed mode
-- valid Claude Code login on the machine
+- Node.js 20 or newer
+- Claude Code CLI 2.1.179 or newer in `PATH`, or an explicit `cliPath`
+- a working Claude Code login on the same machine
 
-The wrapper defaults to the Claude Code auth bundle at:
-
-- `~/.claude.json`
-- `~/.claude/.credentials.json`
-
-If you need to verify that Claude Code is currently logged in, run:
+Check the prerequisites:
 
 ```bash
+claude --version
 claude auth status
 ```
 
-## What It Provides
+## Quick Start
 
-- a small SDK for raw prompt execution with minimal prompt overhead
-- a CLI for direct prompt mode from flags, files, or stdin
-- structured streaming events for adapters such as HTTP compatibility servers
-- multimodal vision input from local image files, HTTPS URLs, or base64 image data
-- isolated execution via a temporary home directory copied from your Claude Code auth bundle
-- an explicit `--direct-api-call` escape hatch that bypasses the Claude Code CLI process after risk confirmation
-
-## SDK
-
-```ts
+```js
 import { runPrompt } from "@yadimon/claude-code-to-llm";
 
-const result = await runPrompt("Hello", {
+const response = await runPrompt("Translate to German: Good morning", {
   model: "claude-sonnet-4-6",
-  maxTokens: 256
+  maxTokens: 80
 });
 
-console.log(result.content);
-console.log(result.usage);
+console.log(response.content);
+console.log(response.usage.totalTokens);
 ```
 
-### Vision
-
-Pass one or more images through `RunOptions.images`. Images are sent as real multimodal content
-blocks; the runner does not enable Claude Code's file tools.
+`runPrompt()` resolves to:
 
 ```ts
+type CoreResponse = {
+  id: string;
+  model: string;
+  prompt: string;
+  createdAt: number;
+  content: string;
+  usage: {
+    inputTokens: number;
+    cacheCreationInputTokens: number;
+    cacheReadInputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    webSearchRequests: number;
+    webFetchRequests: number;
+  };
+  raw: { stderr: string; events: unknown[] };
+};
+```
+
+For structured work, tell Claude to return JSON and validate it in your application. The package returns text; it does not enforce a JSON Schema for you.
+
+```js
+const response = await runPrompt("Password reset email", {
+  systemPrompt: 'Classify the text. Return only JSON: {"label":"account|billing|other"}.'
+});
+
+const result = JSON.parse(response.content);
+```
+
+## Vision
+
+`images` accepts local files, HTTPS URLs, and base64 data. Images are passed as real multimodal content blocks while Claude Code tools remain disabled.
+
+### Local file
+
+```js
+import { runPrompt } from "@yadimon/claude-code-to-llm";
+
+const response = await runPrompt("Describe this UI and point out the primary action.", {
+  images: [{ type: "file", path: "./screenshot.png" }]
+});
+
+console.log(response.content);
+```
+
+Relative file paths resolve against `cwd` when supplied, otherwise against the caller's current working directory.
+
+### URL and base64
+
+```js
 import { readFile } from "node:fs/promises";
 import { runPrompt } from "@yadimon/claude-code-to-llm";
 
-const result = await runPrompt("What is shown in these images?", {
+const response = await runPrompt("Compare these images.", {
   images: [
-    { type: "file", path: "./screenshot.png" },
-    { type: "url", url: "https://example.com/photo.webp" },
+    { type: "url", url: "https://example.com/reference.webp" },
     {
       type: "base64",
       mediaType: "image/jpeg",
-      data: await readFile("./photo.jpg", "base64")
+      data: await readFile("./candidate.jpg", "base64")
     }
   ]
 });
-
-console.log(result.content);
 ```
 
-Supported formats are JPEG, PNG, GIF, and WebP. Local paths are resolved against `cwd` when it
-is set, otherwise against the caller's current working directory. URL inputs must use HTTPS.
-Each base64-encoded image is limited to 10 MB, all embedded images together to 20 MB, and
-each request to 100 images. URL payload sizes remain subject to Anthropic's upstream limits.
+Supported formats are JPEG, PNG, GIF, and WebP. The package validates file signatures and declared media types before invoking Claude.
 
-For streamed events:
+| Limit | Value |
+| --- | ---: |
+| Images per request | 100 |
+| Encoded base64 per image | 10 MiB |
+| Encoded base64 across embedded images | 20 MiB |
+| URL protocol | HTTPS only |
 
-```ts
+URL download size and reachability are controlled upstream. If a public host is rejected or flaky, download the file yourself and pass a local file or base64 data for a deterministic transport path.
+
+## Streaming
+
+```js
 import { streamPrompt } from "@yadimon/claude-code-to-llm";
 
-for await (const event of streamPrompt("Hello", {
-  model: "claude-sonnet-4-6"
-})) {
+for await (const event of streamPrompt("Give me three release-note bullets.")) {
   if (event.type === "response.output_text.delta") {
     process.stdout.write(event.delta);
+  }
+
+  if (event.type === "response.completed") {
+    console.error("\nTokens:", event.response.usage.totalTokens);
   }
 }
 ```
 
+The stream also contains `response.started`, `response.raw_event`, and `response.failed` events. Raw events expose Claude Code protocol details and may change with Claude Code; prefer the normalized events for application logic.
+
 ## CLI
 
+Run without a global install:
+
 ```bash
-claude-code-to-llm --prompt "Hello"
-claude-code-to-llm --input-file ./prompt.txt --json
-claude-code-to-llm --prompt "Describe this image" --image ./screenshot.png
-claude-code-to-llm --prompt "Compare these" --image ./one.png --image https://example.com/two.jpg
-cat ./prompt.txt | claude-code-to-llm --stream --json
+npx @yadimon/claude-code-to-llm --prompt "Hello"
+npx @yadimon/claude-code-to-llm --input-file ./prompt.txt --json
+npx @yadimon/claude-code-to-llm --prompt "Describe this" --image ./screenshot.png
+npx @yadimon/claude-code-to-llm --prompt "Compare these" --image ./one.png --image https://example.com/two.jpg
 ```
 
-Supported CLI options:
+Pipe a prompt and emit newline-delimited stream events:
+
+```bash
+node ./make-prompt.mjs | npx @yadimon/claude-code-to-llm --stream --json
+```
+
+Options:
 
 ```text
 --prompt <text>
@@ -109,8 +162,9 @@ Supported CLI options:
 --image <path|url|data-url> (repeatable)
 --stream
 --json
+--verbose
 --model <name>
---reasoning-effort <level>
+--reasoning-effort <low|medium|high|max>
 --max-tokens <n>
 --search
 --direct-api-call
@@ -124,145 +178,128 @@ Supported CLI options:
 --cli <path>
 ```
 
-## Runtime Configuration
+## SDK Options
 
-| Variable | Default | Description |
-|---|---|---|
-| `CLAUDE_CODE_TO_LLM_AUTH_PATH` | `~/.claude.json` | Path to the Claude Code session file. |
-| `CLAUDE_CODE_TO_LLM_CREDENTIALS_PATH` | `~/.claude/.credentials.json` | Path to the Claude Code credentials file. |
-| `CLAUDE_CODE_TO_LLM_SETTINGS_PATH` | - | Optional Claude Code settings file to copy into the temp home. Omit it for the clean minimal runner; user settings are not copied by default. |
-| `CLAUDE_CODE_TO_LLM_CLI_PATH` | `claude` | Path to the Claude Code CLI binary. |
-| `CLAUDE_CODE_TO_LLM_REASONING_EFFORT` | `low` | Default reasoning effort passed to Claude Code. |
-| `CLAUDE_CODE_TO_LLM_CONFIG_HOME` | temp dir | Temporary Claude Code home directory for a run. When set, the wrapper does not delete it automatically. |
-| `CLAUDE_CODE_TO_LLM_WORKSPACE` | temp dir | Workspace directory used for execution. |
-| `CLAUDE_CODE_TO_LLM_LOCAL_HOME` | `.claude-code-to-llm/` | Local directory used by the auth copy helper. |
-| `CLAUDE_CODE_TO_LLM_ACCEPT_DIRECT_API_CALL_RISK` | - | Required value `1` to use `--direct-api-call` without passing `--accept-direct-api-call-risk`. |
-| `CLAUDE_CODE_TO_LLM_DIRECT_API_BASE_URL` | `https://api.anthropic.com` | Base URL for experimental direct Messages calls. |
-| `CLAUDE_CODE_OAUTH_TOKEN` | - | Optional Claude Code OAuth token used by direct mode before reading the credentials file. |
-
-## Notes
-
-- The wrapper calls `claude --print --output-format stream-json`.
-- Requests with images additionally use Claude Code's `--input-format stream-json` protocol.
-- `maxTokens` maps to `CLAUDE_CODE_MAX_OUTPUT_TOKENS` for the spawned Claude Code process.
-- The package is intentionally focused on raw prompt execution. It does not expose Claude Code tools through its public API.
-- Web search is off by default. Enable per-call with `webSearch: true` (SDK) or `--search` (CLI).
-- Requires Claude Code CLI `>= 2.1.179`. The runner detects the version on first call and fails with an upgrade hint if it's older — install or refresh via `npm i -g @anthropic-ai/claude-code@latest`.
-- Vision is release-tested with Claude Code CLI `2.1.211` and the isolated temporary home. Keeping
-  the isolated home is important because user hooks or plugins can otherwise alter image inputs.
-
-## Direct API Call Mode
-
-`--direct-api-call` is an explicit, off-by-default bypass for the local Claude Code CLI process. It maps the prompt to Anthropic's Messages endpoint with Claude Code OAuth credentials and returns the same SDK/CLI response shape. It does not create a temp repo, does not run `claude --print`, and does not add Claude Code tool or slash-command context.
-
-For Claude Code OAuth compatibility, direct mode sends a short Claude-Code-style transport identity block in `system[]`:
-
-```json
-{ "type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude." }
+```ts
+type RunOptions = {
+  model?: string;                 // default: claude-sonnet-4-6
+  reasoningEffort?: string;       // default: low
+  maxTokens?: number;
+  timeout?: number;               // milliseconds; default: 5 minutes
+  systemPrompt?: string;
+  webSearch?: boolean;            // opt in to the WebSearch tool
+  images?: ImageInput[];
+  cwd?: string;
+  cliPath?: string;
+  authPath?: string;
+  credentialsPath?: string;
+  settingsPath?: string;
+  configHome?: string;
+  responseId?: string;
+};
 ```
 
-It does not send Claude Code's full agent prompt, project context, tool schemas, slash-command metadata, or dynamic cwd/git/memory sections.
+`createRunner(baseOptions)` is useful when many calls share the same model, timeout, auth paths, or system prompt.
 
-You must confirm the risk every time with a flag, or set the confirmation environment variable once for a shell/session:
+## Minimal Mode and Isolation
+
+Minimal mode is always on for `runPrompt()` and `streamPrompt()`:
+
+- `--tools ""` removes built-in tool schemas. `webSearch: true` enables only `WebSearch` for that call.
+- `--disable-slash-commands` excludes slash-command metadata.
+- `--system-prompt ""` replaces Claude Code's agent preset. `systemPrompt` supplies your own replacement.
+- `--no-session-persistence`, safe mode, and no Chrome keep calls isolated.
+- a strict empty MCP configuration ignores user and project MCP servers.
+- environment flags disable auto-memory, history, checkpoints, bundled skills, marketplace auto-install, updater, telemetry, and error reporting.
+
+The package does not use Claude Code's `--bare` flag because current Claude Code versions make bare mode skip OAuth and keychain reads. It instead creates a temporary home that contains an empty session file, an empty MCP config, and a copy of the local credentials file. It does not copy user settings unless `settingsPath` is explicit.
+
+One release benchmark with Claude Code 2.1.179 and `claude-sonnet-4-6` measured a 151-token input floor for a tiny prompt. This is a snapshot, not a guarantee: Claude Code and model routing can change. Run the repository's `npm run smoke:tokens` before relying on a budget.
+
+## Authentication and Security
+
+Default files:
+
+- `~/.claude.json`
+- `~/.claude/.credentials.json`
+
+Both must exist. Claude Code itself manages these files through login/logout. The wrapper reads them only on the local machine, copies the credential into its isolated home, and normally removes package-owned temporary directories after the call.
+
+The spawned CLI inherits the caller's environment. Claude Code's own authentication precedence still applies: for example, an approved `ANTHROPIC_API_KEY` can take precedence over subscription OAuth. Remove unintended provider credentials from the process environment and check `claude auth status` when the billing/auth route matters.
+
+If you pass `configHome` or `cwd`, those directories are caller-owned and are not deleted. Keep a persistent `configHome` private because it contains a credentials copy. Never commit `.claude-code-to-llm/`, credentials, session files, or tokens.
+
+Custom user settings, hooks, and plugins are intentionally excluded. Supplying `settingsPath` expands the trust boundary and can change behavior; use it only when required.
+
+See [Claude Code authentication](https://code.claude.com/docs/en/authentication) for Anthropic's current login methods, credential storage, and precedence rules.
+
+## Environment Variables
+
+The core SDK primarily uses `RunOptions`, and its CLI uses the matching flags. These are the environment variables the core package reads directly:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CLAUDE_CODE_TO_LLM_CLI_PATH` | `claude` | Default CLI-backed runner executable. |
+| `CLAUDE_CODE_TO_LLM_LOCAL_HOME` | `.claude-code-to-llm/` | Destination used only by the auth-copy helper. |
+| `CLAUDE_CODE_TO_LLM_ACCEPT_DIRECT_API_CALL_RISK` | unset | Direct-mode CLI acknowledgement; must equal `1`. |
+| `CLAUDE_CODE_TO_LLM_DIRECT_API_BASE_URL` | `https://api.anthropic.com` | Experimental direct-mode base URL. |
+| `CLAUDE_CODE_TO_LLM_CREDENTIALS_PATH` | `~/.claude/.credentials.json` | Direct mode's credentials-file override. |
+| `CLAUDE_CODE_OAUTH_TOKEN` | unset | Direct-mode token; takes precedence over the credentials file. |
+
+Use `authPath`, `credentialsPath`, `settingsPath`, `configHome`, `cwd`, and `reasoningEffort` in the SDK, or their documented CLI flags, for CLI-backed path and runtime overrides. The server package additionally maps its configuration environment variables into those options.
+
+## Experimental Direct API Mode
+
+Direct mode bypasses the `claude` child process and calls an Anthropic Messages-compatible endpoint with Claude Code OAuth credentials. It is off by default and is not the normal `ANTHROPIC_API_KEY` billing path. The CLI requires explicit risk acknowledgement; in the SDK, choosing a separately named direct-mode function is the opt-in.
 
 ```bash
-claude-code-to-llm \
+npx @yadimon/claude-code-to-llm \
   --direct-api-call \
   --accept-direct-api-call-risk \
-  --prompt "Translate to German: Good morning" \
-  --max-tokens 80
+  --max-tokens 80 \
+  --prompt "Translate to German: Good morning"
 ```
+
+PowerShell:
 
 ```powershell
 $env:CLAUDE_CODE_TO_LLM_ACCEPT_DIRECT_API_CALL_RISK = "1"
 npx @yadimon/claude-code-to-llm --direct-api-call --prompt "Translate to German: Good morning"
 ```
 
-Direct mode reads auth in this order:
+The SDK exports `runDirectApiPrompt`, `streamDirectApiPrompt`, and `createDirectApiRunner` for the same opt-in transport. Direct mode reads auth in this order:
 
 1. `CLAUDE_CODE_OAUTH_TOKEN`
 2. `CLAUDE_CODE_TO_LLM_CREDENTIALS_PATH`
 3. `~/.claude/.credentials.json`
 
-Use `claude setup-token` if you need a long-lived OAuth token for scripts. Do not expose a direct-mode process to untrusted users or networks.
+Direct mode sends a short Claude-Code transport identity, but not the coding-agent prompt, project context, tools, slash commands, or memory. Anthropic may change, restrict, rate-limit, or block this transport. Do not expose it to untrusted users or networks, and review [Anthropic's Consumer Terms](https://www.anthropic.com/legal/consumer-terms) for your use case.
 
-### Parallel Translation Example
+## Limitations
 
-For many tiny translation/classification calls, direct mode can be useful because it avoids starting the Claude Code agent harness for each element. A typical pattern is to confirm the risk once, then have Claude Code fan out multiple small direct calls:
+- One call is one isolated turn. There is no conversation/session continuation API.
+- No general tool calling, function calling, file access, shell access, or coding-agent loop.
+- JSON and other structured outputs are prompt conventions; validate them yourself.
+- Model availability and aliases depend on Claude Code and the authenticated account.
+- The CLI-backed runner currently requires file-based `~/.claude.json` and `.claude/.credentials.json`; a credential available only through a platform keychain is not enough for its isolated-home copy.
+- The default backend starts a Claude Code process per call, so high-volume tiny requests have process overhead.
+- `webSearch` is an explicit exception to tool-free mode and is not supported by direct mode.
+- HTTPS image fetches depend on Anthropic's downloader and its network policy.
 
-```powershell
-$env:CLAUDE_CODE_TO_LLM_ACCEPT_DIRECT_API_CALL_RISK = "1"
-claude -p "Run 20 translation tasks in parallel. For each element, call: npx @yadimon/claude-code-to-llm --direct-api-call --max-tokens 120 --json --prompt '<translate this one element to German, preserving placeholders>'. Return a JSON array in the original order."
-```
+## Troubleshooting
 
-If your account supports a weaker/faster model, pass it explicitly:
+| Symptom | Likely cause | What to do |
+| --- | --- | --- |
+| `claude CLI not found` | CLI is not in `PATH` | Install/upgrade Claude Code or set `CLAUDE_CODE_TO_LLM_CLI_PATH` / `cliPath` to the executable. |
+| Upgrade hint before a request | Claude Code is older than 2.1.179 | Run `npm i -g @anthropic-ai/claude-code@latest`, then check `claude --version`. |
+| `Claude Code session auth not found` | `~/.claude.json` is missing or a custom path is wrong | Run `claude` to complete login, or pass the correct `authPath`. |
+| `Claude Code credentials not found` / login expired | Credentials are missing or stale | Run `claude auth status`, then log in again if needed. |
+| Image URL cannot be downloaded | Upstream downloader rejected the host or response | Pass a local file or base64 image; do not retry an unreliable host indefinitely. |
+| Images disappear only with custom settings | A copied hook/plugin changes multimodal input | Remove `settingsPath` and use the default isolated home. |
+| Windows wrapper rejects newline arguments | A `.cmd` shim cannot preserve the arguments safely | Point `cliPath` at the real Claude executable rather than the command shim. |
+| Request times out | Model, network, or subscription queue exceeded the default | Increase `timeout` in milliseconds and keep application-level retry limits. |
 
-```bash
-npx @yadimon/claude-code-to-llm \
-  --direct-api-call \
-  --accept-direct-api-call-risk \
-  --model <weak-translation-model> \
-  --max-tokens 120 \
-  --prompt "Translate to German: Reset password"
-```
-
-### Policy and Proxy Source Notes
-
-This feature is intentionally described as experimental. Anthropic's Consumer Terms prohibit automated or non-human access except through an Anthropic API key or explicit permission, and prohibit account sharing/resale. Claude Code's own docs document bearer-token auth, `CLAUDE_CODE_OAUTH_TOKEN`, and LLM gateways/proxies for Claude Code CLI use. That is not the same as Anthropic endorsing subscription OAuth as a general third-party API proxy surface.
-
-Relevant source links:
-
-- Anthropic Consumer Terms: https://www.anthropic.com/legal/consumer-terms
-- Claude Code authentication docs: https://code.claude.com/docs/en/authentication
-- Claude Code proxy/gateway docs: https://code.claude.com/docs/en/bedrock-vertex-proxies
-- OmniRoute marks Claude Code OAuth as subscription-risk: https://raw.githubusercontent.com/diegosouzapw/OmniRoute/main/src/shared/constants/providers.ts
-- Public reporting on Anthropic cutting off third-party harness subscription coverage: https://techcrunch.com/2026/04/04/anthropic-says-claude-code-subscribers-will-need-to-pay-extra-for-openclaw-support/
-
-## Minimal Mode (always on, since 0.5)
-
-`runPrompt` / `streamPrompt` always spawn `claude` in **minimal mode** — every Claude Code framework feature that isn't required for a one-shot LLM call is stripped before the prompt is sent. There is no toggle; this is the package's reason to exist.
-
-Measured floor on `claude-sonnet-4-6` with a tiny one-shot prompt, Claude Code `2.1.179`, and OAuth/subscription auth: **151 input tokens** and about **5 KB** of temporary Claude home files. In the same local probe, MCP servers, plugins, skills, slash commands, tools, telemetry, prompt history, and auto-memory were all absent or disabled.
-
-Flags forced on every call:
-
-- `--tools ""` — strip every built-in tool schema (Read, Edit, Write, Bash, Glob, Grep, …). When `webSearch: true`, `--tools WebSearch` instead.
-- `--disable-slash-commands` — keep `/skill` metadata out of context.
-- `--system-prompt ""` (or your `systemPrompt` value) — replace the default "You are Claude Code…" preset. This also disables the dynamic cwd/env/git/memory sections (they're tied to the default preset).
-- `--no-session-persistence` — every call is isolated.
-- `--safe-mode` and `--no-chrome` — disable Claude Code customizations and browser integration for the run.
-- `--strict-mcp-config --mcp-config <empty config>` — ignore user/project MCP servers and load an empty MCP set.
-
-Runtime environment forced on every CLI-backed call:
-
-- `CLAUDE_CONFIG_DIR` points inside the isolated temp home.
-- `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1`, and `CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING=1`.
-- `CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL=1`, `DISABLE_AUTOUPDATER=1`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `DISABLE_TELEMETRY=1`, `DISABLE_ERROR_REPORTING=1`, and `DO_NOT_TRACK=1`.
-- `CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1`, `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`, `ENABLE_CLAUDEAI_MCP_SERVERS=false`, and `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1`.
-
-What stays on:
-
-- **OAuth / subscription auth.** The package never passes `--bare`, which would force `ANTHROPIC_API_KEY` and bypass the keychain.
-- `webSearch: true` opts WebSearch back in for individual calls.
-- A tiny throwaway Claude home with `.credentials.json`, an empty `.claude.json`, and an empty MCP config file. Put `CLAUDE_CODE_TO_LLM_CONFIG_HOME` on a RAM disk if those remaining files should never touch persistent storage.
-
-### Custom system prompt
-
-Pass `systemPrompt` to replace the empty default with your own instructions:
-
-```ts
-await runPrompt(userMessage, {
-  systemPrompt: "Du bist ein deutscher Klassifikator. Antworte als JSON {\"tags\": [...]}."
-});
-```
-
-There is no `appendSystemPrompt` option — appending would re-attach Claude Code's heavy default preset, defeating minimal mode. Build your own full prompt string instead.
-
-### Verifying the token budget
-
-`npm run smoke:tokens` runs the same `say hi` prompt 3 times and reports a per-call usage breakdown (input / cacheCreate / cacheRead / output). It asserts that the **minimum** `inputTokens + cacheCreationInputTokens + cacheReadInputTokens` across the 3 runs stays under a budget (default `8000`, tune via `SMOKE_TOKENS_BUDGET`).
-
-Observed today on `claude-sonnet-4-6` with subscription auth and the default CLI-backed runner: **151 input tokens** for the smallest prompt. The floor can still change when Claude Code changes its headless protocol, so keep `npm run smoke:tokens` in release checks.
+Use `--verbose` on the CLI to print an error stack. Raw Claude events are also retained in `response.raw.events` for local diagnosis; do not log them if prompts or model outputs are sensitive.
 
 ## Development
 
@@ -270,4 +307,9 @@ Observed today on `claude-sonnet-4-6` with subscription auth and the default CLI
 npm run build --workspace @yadimon/claude-code-to-llm
 npm run lint --workspace @yadimon/claude-code-to-llm
 npm run typecheck --workspace @yadimon/claude-code-to-llm
+npm test --workspace @yadimon/claude-code-to-llm
 ```
+
+## License
+
+MIT
