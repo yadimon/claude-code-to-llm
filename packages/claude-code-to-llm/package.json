@@ -1,6 +1,6 @@
 {
   "name": "@yadimon/claude-code-to-llm",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Run minimal text and vision prompts through your local Claude Code login via SDK or CLI",
   "type": "module",
   "main": "./dist/index.js",
