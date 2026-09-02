@@ -81,6 +81,21 @@ These scripts:
 
 GitHub Actions publishes only the package that matches the pushed tag.
 
+## Pre-release verification
+
+The release scripts run `npm run check` themselves; `npm run release:check` adds the Docker e2e. Neither covers the live lanes, which need real Claude auth. Run them explicitly before tagging a release that touches the runner, spawn, or image handling:
+
+- `npm run smoke:vision` — image input through core and server against the real CLI.
+- `npm run smoke:tokens` — token-usage reporting against the real CLI.
+
+Run live lanes with the repository's isolated Claude home, not the developer's global one; user-level extensions, plugins, or settings can change headless behavior and make a package failure look like an input failure.
+
+`npm test` also asserts that the shebang fixtures under `packages/*/test/fixtures/` stay tracked as executable (`100755`); Linux CI runs them directly, and a lost mode bit only shows up there.
+
+## Post-publish verification
+
+A green `Publish` run proves the tarball was accepted, not that the published artifact works. After the workflow finishes, run `npm run smoke:published` — it clean-installs the published core and server packages from the registry and exercises them.
+
 ## Manual Equivalent
 
 Core package:
