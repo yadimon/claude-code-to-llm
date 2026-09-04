@@ -163,9 +163,13 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
     })
   });
 
-  const spawnConfig = resolveSpawn(cliPath, cliArgs);
   let child: ChildProcessWithoutNullStreams;
   try {
+    // resolveSpawn throws for arguments the Windows cmd shim cannot carry
+    // (newlines), and spawn can throw synchronously (EFTYPE/EINVAL/E2BIG) —
+    // child.on("error") never fires for those. Both happen after the
+    // directories exist, so both belong inside the cleanup boundary.
+    const spawnConfig = resolveSpawn(cliPath, cliArgs);
     child = spawn(spawnConfig.command, spawnConfig.args, {
       cwd: workspace,
       env: buildClaudeEnv(claudeHome, maxTokens),
@@ -173,8 +177,6 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
       windowsVerbatimArguments: spawnConfig.windowsVerbatimArguments
     });
   } catch (error) {
-    // spawn can throw synchronously (EFTYPE/EINVAL/E2BIG); `child.on("error")`
-    // never fires for those, so cleanup has to happen here.
     throw withCleanupPreserved(error, [
       () => cleanupDirectory(workspace, ownsWorkspace),
       () => cleanupDirectory(claudeHome, ownsClaudeHome)
@@ -243,8 +245,13 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
         error.message = `${error.message} (termination failed: ${reason})`;
       })
       .finally(() => {
-        cleanupDirectory(workspace, ownsWorkspace);
-        cleanupDirectory(claudeHome, ownsClaudeHome);
+        // cleanupDirectory rethrows non-ignorable errors; routing them through
+        // withCleanupPreserved keeps the original failure and guarantees
+        // queue.fail still runs, so a consumer awaiting next() cannot hang.
+        withCleanupPreserved(error, [
+          () => cleanupDirectory(workspace, ownsWorkspace),
+          () => cleanupDirectory(claudeHome, ownsClaudeHome)
+        ]);
         queue.fail(error);
       })
       .then(() => undefined);
