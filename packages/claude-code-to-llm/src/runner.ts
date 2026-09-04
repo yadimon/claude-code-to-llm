@@ -11,6 +11,7 @@ import {
 } from "./parse.js";
 import { assertClaudeVersion, assertCliPathExists, normalizeSpawnError } from "./platform.js";
 import { AsyncQueue } from "./queue.js";
+import { terminate } from "./lifecycle.js";
 import { resolveSpawn } from "./spawn.js";
 import { createClaudeCodeHome, createWorkspace, cleanupDirectory } from "./workspace.js";
 import { createMultimodalContent } from "./images.js";
@@ -100,7 +101,14 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
 
   const responseId = options.responseId || `resp_${randomUUID().replace(/-/g, "")}`;
   const startedAt = Date.now();
-  const queue = new AsyncQueue<StreamEvent>();
+  // Abandoning the stream (an early `break`) must tear the run down the same
+  // way a timeout or abort does; otherwise the child, its timeout, and the
+  // ephemeral Claude home and workspace all outlive the consumer.
+  let cleanupSettled: Promise<void> = Promise.resolve();
+  const queue = new AsyncQueue<StreamEvent>(() => {
+    finalizeFailure(new Error("Stream closed by consumer"));
+    return cleanupSettled;
+  });
   const rawEvents: unknown[] = [];
   let settled = false;
   let content = "";
@@ -156,12 +164,22 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
   });
 
   const spawnConfig = resolveSpawn(cliPath, cliArgs);
-  const child: ChildProcessWithoutNullStreams = spawn(spawnConfig.command, spawnConfig.args, {
-    cwd: workspace,
-    env: buildClaudeEnv(claudeHome, maxTokens),
-    windowsHide: true,
-    windowsVerbatimArguments: spawnConfig.windowsVerbatimArguments
-  });
+  let child: ChildProcessWithoutNullStreams;
+  try {
+    child = spawn(spawnConfig.command, spawnConfig.args, {
+      cwd: workspace,
+      env: buildClaudeEnv(claudeHome, maxTokens),
+      windowsHide: true,
+      windowsVerbatimArguments: spawnConfig.windowsVerbatimArguments
+    });
+  } catch (error) {
+    // spawn can throw synchronously (EFTYPE/EINVAL/E2BIG); `child.on("error")`
+    // never fires for those, so cleanup has to happen here.
+    throw withCleanupPreserved(error, [
+      () => cleanupDirectory(workspace, ownsWorkspace),
+      () => cleanupDirectory(claudeHome, ownsClaudeHome)
+    ]);
+  }
   const timeoutHandle = setTimeout(() => {
     if (!settled) {
       finalizeFailure(new Error(`Claude Code execution timeout after ${timeoutMs}ms`));
@@ -206,20 +224,30 @@ export function streamPrompt(prompt: string, options: RunOptions = {}): AsyncIte
     }
     settled = true;
     clearTimeout(timeoutHandle);
-    if (!child.killed) {
-      child.kill();
-    }
     flushStdoutBuffer();
 
-    cleanupDirectory(workspace, ownsWorkspace);
-    cleanupDirectory(claudeHome, ownsClaudeHome);
     queue.push({
       type: "response.failed",
       error: {
         message: error.message
       }
     });
-    queue.fail(error);
+
+    // Cleanup runs only after the child has actually exited — while it is
+    // alive it holds the workspace cwd open and removal silently fails.
+    cleanupSettled = terminate(child)
+      .catch(terminationError => {
+        const reason = terminationError instanceof Error
+          ? terminationError.message
+          : String(terminationError);
+        error.message = `${error.message} (termination failed: ${reason})`;
+      })
+      .finally(() => {
+        cleanupDirectory(workspace, ownsWorkspace);
+        cleanupDirectory(claudeHome, ownsClaudeHome);
+        queue.fail(error);
+      })
+      .then(() => undefined);
   }
 
   function flushStdoutBuffer(): void {

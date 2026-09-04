@@ -7,9 +7,29 @@ import { fileURLToPath } from "node:url";
 import {
   createClaudeCodeExitError,
   runPrompt,
+  streamPrompt,
   normalizeRunOptions,
   normalizeSpawnError
 } from "../src/index.js";
+
+const EPHEMERAL_DIR_PREFIXES = ["claude-code-to-llm-home-", "claude-code-to-llm-workspace-"];
+
+function listEphemeralDirs(): string[] {
+  return fs
+    .readdirSync(os.tmpdir())
+    .filter(entry => EPHEMERAL_DIR_PREFIXES.some(prefix => entry.startsWith(prefix)))
+    .sort();
+}
+
+const CLI_PATH_BY_PLATFORM: Record<string, (cmdPath: string, fixturePath: string) => string> = {
+  win32: cmdPath => cmdPath
+};
+
+function resolveFixtureCliPath(cmdPath: string, fixturePath: string): string {
+  const select =
+    CLI_PATH_BY_PLATFORM[process.platform] ?? ((_cmd: string, fixture: string) => fixture);
+  return select(cmdPath, fixturePath);
+}
 
 // Windows .cmd shims re-expand args via `%*`, which surfaces an empty
 // argument as the literal 2-char string `""`. The real claude CLI is a
@@ -320,6 +340,45 @@ test("runPrompt fails when the Claude Code process exits due to a signal", async
     } else {
       process.env.FAKE_CLAUDE_TERMINATE_SIGNAL = previousSignal;
     }
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("streamPrompt removes the ephemeral Claude home when a consumer breaks out early", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "claude-code-to-llm-early-break-"));
+  const { sessionPath, credentialsPath } = writeAuthBundle(tempDir);
+  const fixturePath = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "./fixtures/fake-claude.mjs"
+  );
+  const cmdPath = path.join(tempDir, "fake-claude.cmd");
+  fs.writeFileSync(cmdPath, `@echo off\r\n"${process.execPath}" "${fixturePath}" %*\r\n`, "utf8");
+
+  const cliPath = resolveFixtureCliPath(cmdPath, fixturePath);
+  const previousDelay = process.env.FAKE_CLAUDE_DELAY_MS;
+  process.env.FAKE_CLAUDE_DELAY_MS = "5000";
+  const before = listEphemeralDirs();
+
+  const seen: string[] = [];
+  try {
+    for await (const event of streamPrompt("Hello", {
+      authPath: sessionPath,
+      credentialsPath,
+      cliPath,
+      timeout: 20000
+    })) {
+      seen.push(event.type);
+      break;
+    }
+
+    assert.deepEqual(seen, ["response.started"]);
+    assert.deepEqual(
+      listEphemeralDirs(),
+      before,
+      "ephemeral Claude home and workspace must not survive an abandoned stream"
+    );
+  } finally {
+    process.env.FAKE_CLAUDE_DELAY_MS = previousDelay ?? "";
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });

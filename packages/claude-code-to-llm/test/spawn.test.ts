@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -11,8 +11,18 @@ import {
   resolveSpawnForPlatform
 } from "../src/index.js";
 
+const tempDirs: string[] = [];
+
+after(() => {
+  for (const dir of tempDirs) {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
 function makeTempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "claude-code-to-llm-spawn-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claude-code-to-llm-spawn-"));
+  tempDirs.push(dir);
+  return dir;
 }
 
 test("resolveSpawnForPlatform uses cmd wrapper on Windows for bare commands", () => {

@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer as createHttpServer } from "node:http";
 import * as fs from "node:fs";
@@ -77,8 +77,17 @@ async function startFakeAnthropic(handler: (request: CapturedRequest, response: 
   };
 }
 
+const tempDirs: string[] = [];
+
+after(() => {
+  for (const dir of tempDirs) {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
 function writeCredentialsFile(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claude-oauth-test-"));
+  tempDirs.push(dir);
   const credentialsPath = path.join(dir, ".credentials.json");
   fs.writeFileSync(
     credentialsPath,
